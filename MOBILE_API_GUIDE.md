@@ -26,7 +26,7 @@ POST /api/auth/login
 Content-Type: application/json
 
 {
-  "username": "nguyenvana",
+  "email": "nva@gmail.com",
   "password": "matkhau123"
 }
 ```
@@ -35,8 +35,7 @@ Content-Type: application/json
 ```json
 {
   "user_id": 5,
-  "userid": "NVA1234",
-  "username": "nguyenvana",
+  "email": "nva@gmail.com",
   "full_name": "Nguyễn Văn A",
   "role": "user",
   "status": "approved",
@@ -52,7 +51,7 @@ Content-Type: application/json
 - Khi nhận HTTP 401 → gọi refresh endpoint trước, chỉ chuyển về login khi refresh cũng thất bại
 
 **Lỗi:**
-- `401` — Sai username/mật khẩu
+- `401` — Sai email/mật khẩu
 - `403` — Tài khoản chưa duyệt / bị vô hiệu
 
 ### Refresh Token — Làm mới access token
@@ -133,24 +132,39 @@ Nhận HTTP 401 từ bất kỳ API nào
 
 ## 2. Đăng ký tài khoản
 
+### Bước 1: Lấy danh sách tên nhân viên
+
+```
+GET /api/employee-names
+```
+
+**Auth**: Không cần
+
+**Response 200:**
+```json
+[
+  { "id": 1, "full_name": "Nguyễn Văn A" },
+  { "id": 2, "full_name": "Trần Thị B" }
+]
+```
+
+**Lưu ý:** Chỉ trả tên active và chưa có user nào sử dụng. Dùng cho dropdown chọn tên khi đăng ký.
+
+### Bước 2: Gửi đăng ký
+
 ```
 POST /api/auth/register
 Content-Type: application/json
 
 {
-  "username": "nguyenvana",
-  "password": "matkhau123",
-  "full_name": "Nguyễn Văn A",
-  "short_name": "NVA",
-  "rank": "Đại úy",
-  "position": "Trưởng phòng",
-  "phone": "0901234567",
   "email": "nva@gmail.com",
+  "password": "matkhau123",
+  "employee_name_id": 1,
   "department": "Phòng Kỹ thuật"
 }
 ```
 
-**Bắt buộc:** username, password, full_name, short_name. Còn lại optional.
+**Bắt buộc:** email, password, employee_name_id. `department` optional.
 
 **Response 201:**
 ```json
@@ -175,12 +189,9 @@ Authorization: Bearer <token>
 ```json
 {
   "user_id": 5,
-  "username": "nguyenvana",
-  "userid": "NVA1234",
-  "full_name": "Nguyễn Văn A",
-  "short_name": "NVA",
   "email": "nva@gmail.com",
-  "phone": "0901234567",
+  "full_name": "Nguyễn Văn A",
+  "employee_name_id": 1,
   "department": "Phòng Kỹ thuật",
   "role": "user",
   "status": "approved"

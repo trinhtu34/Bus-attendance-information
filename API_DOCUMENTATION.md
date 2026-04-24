@@ -1,6 +1,6 @@
 # API Documentation — Bus Attendance System
 
-> Base URL: `https://blogscloud.click/api`
+> Base URL: `https://blogscloud.click/api` (production) hoặc `http://localhost:8000/api` (dev)
 
 ---
 
@@ -50,7 +50,7 @@ HTTP Status codes:
 
 Hệ thống sử dụng **soft delete** cho các entity chính (User, Bus, Route, Location, Driver):
 - Cột `is_deleted` (0/1) đánh dấu đã xóa
-- Khi xóa, các trường unique (username, bus_code, route_code) được append suffix `__del_{timestamp}` để giải phóng constraint
+- Khi xóa, các trường unique (email, bus_code, route_code) được append suffix `__del_{timestamp}` để giải phóng constraint
 - Trạng thái chuyển sang `inactive` / `disabled`
 - Dữ liệu vẫn tồn tại trong DB, chỉ bị ẩn khỏi danh sách
 
@@ -63,21 +63,18 @@ Hệ thống sử dụng **soft delete** cho các entity chính (User, Bus, Rout
 
 **Auth**: Không cần
 
+**Bước 1**: Lấy danh sách tên từ `GET /api/employee-names` (public, không cần auth) để hiển thị dropdown.
+
 **Request Body**:
 ```json
 {
-  "username": "nguyenvana",
-  "password": "matkhau123",
-  "full_name": "Nguyễn Văn A",
-  "short_name": "NVA",
-  "rank": "Đại úy",
-  "position": "Trưởng phòng",
-  "phone": "0901234567",
   "email": "nva@gmail.com",
+  "password": "matkhau123",
+  "employee_name_id": 1,
   "department": "Phòng Kỹ thuật"
 }
 ```
-*Bắt buộc: username, password, full_name, short_name. Còn lại optional.*
+*Bắt buộc: email, password, employee_name_id. `department` optional.*
 
 **Response** `201`:
 ```json
@@ -97,7 +94,7 @@ Hệ thống sử dụng **soft delete** cho các entity chính (User, Bus, Rout
 **Request Body**:
 ```json
 {
-  "username": "nguyenvana",
+  "email": "nva@gmail.com",
   "password": "matkhau123"
 }
 ```
@@ -106,8 +103,7 @@ Hệ thống sử dụng **soft delete** cho các entity chính (User, Bus, Rout
 ```json
 {
   "user_id": 5,
-  "userid": "NVA1234",
-  "username": "nguyenvana",
+  "email": "nva@gmail.com",
   "full_name": "Nguyễn Văn A",
   "role": "user",
   "status": "approved",
@@ -118,7 +114,7 @@ Hệ thống sử dụng **soft delete** cho các entity chính (User, Bus, Rout
 *Web: Server set 2 cookie — `access_token` (path=/, 30 phút) và `refresh_token` (path=/api/auth, 7 ngày). Mobile: dùng `access_token` và `refresh_token` trong response body.*
 
 **Lỗi**:
-- `401` — Sai username/mật khẩu
+- `401` — Sai email/mật khẩu
 - `403` — Tài khoản pending/rejected/disabled
 
 ---
@@ -183,11 +179,9 @@ Lấy thông tin user hiện tại.
 ```json
 {
   "user_id": 5,
-  "username": "nguyenvana",
-  "full_name": "Nguyễn Văn A",
-  "short_name": "NVA",
   "email": "nva@gmail.com",
-  "phone": "0901234567",
+  "full_name": "Nguyễn Văn A",
+  "employee_name_id": 1,
   "department": "Phòng Kỹ thuật",
   "role": "user",
   "status": "approved"
@@ -196,7 +190,96 @@ Lấy thông tin user hiện tại.
 
 ---
 
-## 2. Route Registration — Đăng ký tuyến xe (User)
+## 2. Employee Names — Danh sách tên nhân viên
+
+### GET `/employee-names`
+Danh sách tên nhân viên active và chưa có user nào sử dụng — dùng cho dropdown đăng ký.
+
+**Auth**: Không cần
+
+**Response** `200`:
+```json
+[
+  { "id": 1, "full_name": "Nguyễn Văn A" },
+  { "id": 2, "full_name": "Trần Thị B" }
+]
+```
+
+**Lưu ý**: Chỉ trả tên `is_active = 1` và chưa có user active (`is_deleted = 0`) nào dùng. Tên "Administrator" và các tên đã được đăng ký sẽ không xuất hiện.
+
+---
+
+### GET `/admin/employee-names`
+Danh sách tất cả tên (kể cả inactive) — admin view.
+
+**Auth**: Admin
+
+**Response** `200`:
+```json
+[
+  {
+    "id": 1,
+    "full_name": "Nguyễn Văn A",
+    "is_active": 1,
+    "user_count": 1,
+    "created_at": "2026-04-20T10:00:00"
+  }
+]
+```
+
+---
+
+### POST `/admin/employee-names`
+Thêm tên mới. Nếu tên inactive đã tồn tại → kích hoạt lại thay vì tạo mới.
+
+**Auth**: Admin
+
+**Request Body**:
+```json
+{ "full_name": "Nguyễn Văn C" }
+```
+
+**Response** `200`:
+```json
+{ "message": "Đã thêm tên 'Nguyễn Văn C'", "id": 3 }
+```
+
+---
+
+### PUT `/admin/employee-names/{id}`
+Sửa tên hoặc toggle active/inactive.
+
+**Auth**: Admin
+
+**Request Body**:
+```json
+{ "full_name": "Nguyễn Văn D", "is_active": 0 }
+```
+*Tất cả fields optional.*
+
+**Response** `200`:
+```json
+{ "message": "Đã cập nhật tên 'Nguyễn Văn D'" }
+```
+
+---
+
+### DELETE `/admin/employee-names/{id}`
+Xóa tên. Chỉ cho phép nếu chưa có user nào dùng.
+
+**Auth**: Admin
+
+**Response** `200`:
+```json
+{ "message": "Đã xóa tên 'Nguyễn Văn C'" }
+```
+
+**Lỗi**:
+- `400` — Không thể xóa — có N tài khoản đang dùng tên này
+
+---
+
+## 3. Route Registration — Đăng ký tuyến xe (User)
 
 ### GET `/registration/routes-available`
 Danh sách tuyến xe đang hoạt động.
@@ -523,13 +606,9 @@ Danh sách tất cả user.
 [
   {
     "user_id": 5,
-    "username": "nguyenvana",
-    "full_name": "Nguyễn Văn A",
-    "short_name": "NVA",
-    "rank": "Đại úy",
-    "position": "Trưởng phòng",
-    "phone": "0901234567",
     "email": "nva@gmail.com",
+    "full_name": "Nguyễn Văn A",
+    "employee_name_id": 1,
     "department": "Phòng Kỹ thuật",
     "role": "user",
     "status": "approved",
@@ -623,19 +702,14 @@ Admin tạo tài khoản trực tiếp (auto-approved).
 **Request Body**:
 ```json
 {
-  "username": "nguyenvana",
-  "password": "matkhau123",
-  "full_name": "Nguyễn Văn A",
-  "short_name": "NVA",
-  "rank": "Đại úy",
-  "position": "Trưởng phòng",
-  "phone": "0901234567",
   "email": "nva@gmail.com",
+  "password": "matkhau123",
+  "employee_name_id": 1,
   "department": "Phòng Kỹ thuật",
   "role_name": "user"
 }
 ```
-*Bắt buộc: username, password, full_name, short_name. `role_name` mặc định "user".*
+*Bắt buộc: email, password, employee_name_id. `department` mặc định "", `role_name` mặc định "user".*
 
 **Response** `200`:
 ```json
@@ -652,12 +726,7 @@ Cập nhật thông tin user.
 **Request Body**:
 ```json
 {
-  "full_name": "Nguyễn Văn B",
-  "short_name": "NVB",
-  "rank": "Thiếu tá",
-  "position": "Phó phòng",
-  "phone": "0909999999",
-  "email": "nvb@gmail.com",
+  "employee_name_id": 2,
   "department": "Phòng Hành chính"
 }
 ```
@@ -671,7 +740,7 @@ Cập nhật thông tin user.
 ---
 
 ### DELETE `/admin/users/{user_id}`
-Xóa user (soft delete). Không thể xóa admin hoặc chính mình. Username được append `__del_{timestamp}`.
+Xóa user (soft delete). Không thể xóa admin hoặc chính mình. Email được append `__del_{timestamp}`.
 
 **Auth**: Admin
 
@@ -1273,7 +1342,7 @@ Dashboard tổng quan.
     {
       "log_id": 100,
       "full_name": "Nguyễn Văn A",
-      "short_name": "NVA",
+      "email": "nva@gmail.com",
       "bus_code": "BUS001",
       "checkin_time": "07:15",
       "attendance_date": "2026-04-23",
@@ -1314,7 +1383,7 @@ Báo cáo chấm công theo ngày, nhóm theo xe.
           "log_id": 100,
           "user_id": 5,
           "full_name": "Nguyễn Văn A",
-          "short_name": "NVA",
+          "email": "nva@gmail.com",
           "department": "Phòng Kỹ thuật",
           "bus_code": "BUS001",
           "route_name": "Hà Nội → Nam Định",
@@ -1356,7 +1425,7 @@ Báo cáo chấm công cho 1 xe cụ thể theo ngày.
       "log_id": 100,
       "user_id": 5,
       "full_name": "Nguyễn Văn A",
-      "short_name": "NVA",
+      "email": "nva@gmail.com",
       "department": "Phòng Kỹ thuật",
       "bus_code": "BUS001",
       "route_name": "Hà Nội → Nam Định",
@@ -1389,7 +1458,7 @@ Lịch sử chấm công của 1 nhân viên (chỉ lấy success).
 {
   "user_id": 5,
   "full_name": "Nguyễn Văn A",
-  "short_name": "NVA",
+  "email": "nva@gmail.com",
   "total_logs": 15,
   "unique_days": 12,
   "logs": [
@@ -1397,7 +1466,7 @@ Lịch sử chấm công của 1 nhân viên (chỉ lấy success).
       "log_id": 100,
       "user_id": 5,
       "full_name": "Nguyễn Văn A",
-      "short_name": "NVA",
+      "email": "nva@gmail.com",
       "department": "Phòng Kỹ thuật",
       "bus_code": "BUS001",
       "route_name": "Hà Nội → Nam Định",
@@ -1423,7 +1492,7 @@ Xuất CSV chấm công (UTF-8 BOM, hỗ trợ tiếng Việt trong Excel).
 
 **Response**: File CSV download (`chamcong_2026-04-23.csv`)
 
-Columns: STT, Ngày, Giờ chấm công, Họ tên, Tên viết tắt, Phòng ban, Mã xe, Tuyến, Khoảng cách (m), Kết quả, Lý do từ chối
+Columns: STT, Ngày, Giờ chấm công, Họ tên, Email, Phòng ban, Mã xe, Tuyến, Khoảng cách (m), Kết quả, Lý do từ chối
 
 ---
 
@@ -1444,7 +1513,7 @@ Tổng hợp suất ăn theo ngày.
       "registration_id": 8,
       "user_id": 5,
       "full_name": "Nguyễn Văn A",
-      "short_name": "NVA",
+      "email": "nva@gmail.com",
       "department": "Phòng Kỹ thuật",
       "registered_at": "2026-04-23T10:30:00+07:00"
     }
@@ -1470,7 +1539,7 @@ Lịch sử đăng ký suất ăn (admin view) với bộ lọc.
     "registration_id": 8,
     "user_id": 5,
     "full_name": "Nguyễn Văn A",
-    "short_name": "NVA",
+    "email": "nva@gmail.com",
     "department": "Phòng Kỹ thuật",
     "meal_date": "2026-04-24",
     "status": "registered",
