@@ -332,8 +332,10 @@ User đăng nhập → Trang suất ăn
 ## 9.2 Bảng chính
 
 ```
-users(user_id, username, password_hash, role_id, full_name, short_name,
+users(user_id, userid, username, password_hash, role_id, full_name, short_name,
       rank, position, phone, email, department, status, is_deleted)
+
+note cho table users: user_id là auto increament, còn userid là được yêu cầu từ khách hàng nó bao gồm Tên_Viết_Tắt+random_number
 
 roles(role_id, role_name, description)
 
@@ -449,4 +451,3 @@ Hệ thống cung cấp giải pháp:
 Sẵn sàng phát triển thêm:
 
 * Phase 2 suất ăn: chọn món cụ thể
-* AI nhận diện khuôn mặt
