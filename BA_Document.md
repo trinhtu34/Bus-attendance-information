@@ -119,9 +119,9 @@ Nguyên tắc chấm công: **"gần điểm đón là được"**
 
 # 3. Đối tượng sử dụng
 
-| Nhóm | Vai trò |
-|------|---------|
-| Người dùng (User) | Đăng ký tuyến xe, chấm công, đăng ký suất ăn |
+| Nhóm                  | Vai trò                                        |
+|-----------------------|------------------------------------------------|
+| Người dùng (User)     | Đăng ký tuyến xe, chấm công, đăng ký suất ăn   |
 | Quản trị viên (Admin) | Quản lý hệ thống, duyệt tài khoản, xem báo cáo |
 
 ---
@@ -210,38 +210,38 @@ Nguyên tắc chấm công: **"gần điểm đón là được"**
 
 # 5. Phân hệ
 
-| Mã | Tên | Chức năng |
-|----|-----|-----------|
-| PH-01 | Xác thực | Đăng ký, đăng nhập, phân quyền, duyệt tài khoản |
-| PH-02 | Xe bus | CRUD xe, gán tuyến, gán tài xế |
-| PH-03 | Tuyến xe | CRUD tuyến, điểm đón/trả |
-| PH-04 | Tài xế | CRUD tài xế |
-| PH-05 | QR | Tạo, cấp lại, vô hiệu QR |
-| PH-06 | Chấm công | Quét QR, GPS, selfie, kiểm tra logic, lưu log |
-| PH-07 | Đăng ký tuyến | Đăng ký/hủy tuyến theo ngày |
-| PH-08 | Suất ăn | Đăng ký/hủy suất ăn, email xác nhận |
-| PH-09 | Báo cáo | Thống kê, xuất CSV |
-| PH-10 | Cấu hình | Ngưỡng GPS, toggle GPS/selfie |
+| Mã    | Tên           | Chức năng                                       |
+|-------|---------------|-------------------------------------------------|
+| PH-01 | Xác thực      | Đăng ký, đăng nhập, phân quyền, duyệt tài khoản |
+| PH-02 | Xe bus        | CRUD xe, gán tuyến, gán tài xế                  |
+| PH-03 | Tuyến xe      | CRUD tuyến, điểm đón/trả                        |
+| PH-04 | Tài xế        | CRUD tài xế                                     |
+| PH-05 | QR            | Tạo, cấp lại, vô hiệu QR                        |
+| PH-06 | Chấm công     | Quét QR, GPS, selfie, kiểm tra logic, lưu log   |
+| PH-07 | Đăng ký tuyến | Đăng ký/hủy tuyến theo ngày                     |
+| PH-08 | Suất ăn       | Đăng ký/hủy suất ăn, email xác nhận             |
+| PH-09 | Báo cáo       | Thống kê, xuất CSV                              |
+| PH-10 | Cấu hình      | Ngưỡng GPS, toggle GPS/selfie                   |
 
 ---
 
 # 6. Use Case
 
-| Mã UC | Tên Use Case | Actor | Kết quả |
-|-------|-------------|-------|---------|
-| UC01 | Đăng ký tài khoản | Người dùng | Tài khoản pending, chờ admin duyệt |
-| UC02 | Đăng nhập | Người dùng | Nhận JWT cookie, truy cập hệ thống |
-| UC03 | Duyệt tài khoản | Admin | User chuyển sang approved, đăng nhập được |
-| UC04 | Quản lý xe bus | Admin | CRUD xe, gán tuyến/tài xế |
-| UC05 | Quản lý tuyến xe | Admin | CRUD tuyến với giờ + điểm đón/trả |
-| UC06 | Quản lý tài xế | Admin | CRUD tài xế |
-| UC07 | Tạo/cấp lại QR | Admin | Mỗi xe có 1 QR active, cấp lại vô hiệu cũ |
-| UC08 | Đăng ký tuyến xe | Người dùng | Chọn tuyến + ngày → đăng ký thành công |
-| UC09 | Chấm công | Người dùng | Quét QR → đăng nhập → GPS + selfie → submit |
-| UC10 | Kiểm tra chấm công | Hệ thống | Validate giờ, trùng lượt, GPS → success/rejected |
-| UC11 | Đăng ký suất ăn | Người dùng | Chọn ngày → đăng ký → email xác nhận |
-| UC12 | Xem báo cáo | Admin | Thống kê theo ngày/xe/người, xuất CSV |
-| UC13 | Cấu hình hệ thống | Admin | Sửa ngưỡng GPS, toggle GPS/selfie |
+| Mã UC | Tên Use Case       | Actor      | Kết quả                                          |
+| -------| --------------------| ------------| --------------------------------------------------|
+| UC01  | Đăng ký tài khoản  | Người dùng | Tài khoản pending, chờ admin duyệt               |
+| UC02  | Đăng nhập          | Người dùng | Nhận JWT cookie, truy cập hệ thống               |
+| UC03  | Duyệt tài khoản    | Admin      | User chuyển sang approved, đăng nhập được        |
+| UC04  | Quản lý xe bus     | Admin      | CRUD xe, gán tuyến/tài xế                        |
+| UC05  | Quản lý tuyến xe   | Admin      | CRUD tuyến với giờ + điểm đón/trả                |
+| UC06  | Quản lý tài xế     | Admin      | CRUD tài xế                                      |
+| UC07  | Tạo/cấp lại QR     | Admin      | Mỗi xe có 1 QR active, cấp lại vô hiệu cũ        |
+| UC08  | Đăng ký tuyến xe   | Người dùng | Chọn tuyến + ngày → đăng ký thành công           |
+| UC09  | Chấm công          | Người dùng | Quét QR → đăng nhập → GPS + selfie → submit      |
+| UC10  | Kiểm tra chấm công | Hệ thống   | Validate giờ, trùng lượt, GPS → success/rejected |
+| UC11  | Đăng ký suất ăn    | Người dùng | Chọn ngày → đăng ký → email xác nhận             |
+| UC12  | Xem báo cáo        | Admin      | Thống kê theo ngày/xe/người, xuất CSV            |
+| UC13  | Cấu hình hệ thống  | Admin      | Sửa ngưỡng GPS, toggle GPS/selfie                |
 
 ---
 
@@ -292,21 +292,21 @@ User đăng nhập → Trang suất ăn
 
 # 8. Quy tắc nghiệp vụ
 
-| # | Quy tắc | Mô tả |
-|---|---------|-------|
-| BR-01 | 1 xe = 1 QR active | Cấp lại QR → vô hiệu cũ |
-| BR-02 | 1 lượt/ngày | Cùng user + ngày + tuyến = chỉ 1 lần success |
-| BR-03 | Server time UTC+7 | Tất cả logic thời gian dùng UTC+7 |
-| BR-04 | Bắt buộc đăng nhập | Phải login trước khi chấm công |
-| BR-05 | GPS gần điểm đón | Khoảng cách ≤ ngưỡng (cấu hình, mặc định 150m) |
-| BR-06 | Tài khoản cần duyệt | Đăng ký → pending → admin approve → approved |
-| BR-07 | 1 xe = 1 tuyến active | Đổi tuyến = hủy cũ + gán mới |
-| BR-08 | 1 tài xế = 1 xe active | Không gán 1 tài xế cho 2 xe |
-| BR-09 | Đăng ký tuyến theo ngày | Chỉ đăng ký ngày tương lai, không giới hạn giờ |
-| BR-10 | Không trùng tuyến cùng giờ | Cùng ngày không đăng ký 2 tuyến cùng giờ |
-| BR-11 | Suất ăn: khung giờ 8-19 | Chỉ đăng ký/hủy trong 8:00 → 19:00 |
-| BR-12 | Suất ăn: deadline | Trước 19:00 ngày hôm trước ngày đăng ký |
-| BR-13 | Email xác nhận suất ăn | Gửi email khi đăng ký thành công (nếu có email) |
+| #     | Quy tắc                    | Mô tả                                           |
+| -------| ----------------------------| -------------------------------------------------|
+| BR-01 | 1 xe = 1 QR active         | Cấp lại QR → vô hiệu cũ                         |
+| BR-02 | 1 lượt/ngày                | Cùng user + ngày + tuyến = chỉ 1 lần success    |
+| BR-03 | Server time UTC+7          | Tất cả logic thời gian dùng UTC+7               |
+| BR-04 | Bắt buộc đăng nhập         | Phải login trước khi chấm công                  |
+| BR-05 | GPS gần điểm đón           | Khoảng cách ≤ ngưỡng (cấu hình, mặc định 150m)  |
+| BR-06 | Tài khoản cần duyệt        | Đăng ký → pending → admin approve → approved    |
+| BR-07 | 1 xe = 1 tuyến active      | Đổi tuyến = hủy cũ + gán mới                    |
+| BR-08 | 1 tài xế = 1 xe active     | Không gán 1 tài xế cho 2 xe                     |
+| BR-09 | Đăng ký tuyến theo ngày    | Chỉ đăng ký ngày tương lai, không giới hạn giờ  |
+| BR-10 | Không trùng tuyến cùng giờ | Cùng ngày không đăng ký 2 tuyến cùng giờ        |
+| BR-11 | Suất ăn: khung giờ 8-19    | Chỉ đăng ký/hủy trong 8:00 → 19:00              |
+| BR-12 | Suất ăn: deadline          | Trước 19:00 ngày hôm trước ngày đăng ký         |
+| BR-13 | Email xác nhận suất ăn     | Gửi email khi đăng ký thành công (nếu có email) |
 
 ---
 
@@ -367,15 +367,15 @@ system_config(config_id, near_stop_threshold_meter, require_gps, require_selfie)
 
 # 10. Báo cáo
 
-| Báo cáo | Mô tả |
-|---------|-------|
-| Theo ngày | Tổng lượt chấm công, success/rejected, nhóm theo xe |
-| Theo xe | Danh sách người chấm trong ngày cho 1 xe |
-| Theo người | Lịch sử chấm công của 1 nhân viên, filter theo khoảng ngày |
-| Xuất CSV | Download file CSV tiếng Việt (UTF-8 BOM) |
-| Dashboard | Tổng xe, QR active, tài xế, nhân viên, chấm công hôm nay |
-| Suất ăn theo ngày | Tổng số suất + danh sách người đăng ký |
-| Lịch sử suất ăn | Filter theo ngày + trạng thái (đã ĐK / đã hủy) |
+| Báo cáo           | Mô tả                                                      |
+| -------------------| ------------------------------------------------------------|
+| Theo ngày         | Tổng lượt chấm công, success/rejected, nhóm theo xe        |
+| Theo xe           | Danh sách người chấm trong ngày cho 1 xe                   |
+| Theo người        | Lịch sử chấm công của 1 nhân viên, filter theo khoảng ngày |
+| Xuất CSV          | Download file CSV tiếng Việt (UTF-8 BOM)                   |
+| Dashboard         | Tổng xe, QR active, tài xế, nhân viên, chấm công hôm nay   |
+| Suất ăn theo ngày | Tổng số suất + danh sách người đăng ký                     |
+| Lịch sử suất ăn   | Filter theo ngày + trạng thái (đã ĐK / đã hủy)             |
 
 ---
 

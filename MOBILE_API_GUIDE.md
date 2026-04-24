@@ -6,15 +6,17 @@
 
 ## 1. Xác thực (Authentication)
 
-Mobile app sử dụng **Bearer Token** thay vì cookie.
+Mobile app sử dụng **Bearer Token** cho access token và gửi refresh token trong request body.
 
 ### Luồng xác thực
 
 ```
-1. Login → nhận access_token trong response body
-2. Lưu token vào SecureStorage
-3. Mọi request sau → gửi header: Authorization: Bearer <token>
-4. Logout → xóa token khỏi bộ nhớ
+1. Login → nhận access_token + refresh_token trong response body
+2. Lưu cả 2 token vào SecureStorage
+3. Mọi request sau → gửi header: Authorization: Bearer <access_token>
+4. Khi nhận 401 → gọi POST /api/auth/refresh với refresh_token → nhận token pair mới
+5. Nếu refresh thất bại → chuyển về màn hình login
+6. Logout → gọi POST /api/auth/logout với refresh_token → xóa token khỏi bộ nhớ
 ```
 
 ### Login
@@ -38,18 +40,49 @@ Content-Type: application/json
   "full_name": "Nguyễn Văn A",
   "role": "user",
   "status": "approved",
-  "access_token": "eyJhbGciOiJIUzI1NiIs..."
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "a1b2c3d4e5f6..."
 }
 ```
 
 **Lưu ý:**
-- Lưu `access_token` vào **SecureStorage** (Flutter), **Keychain** (iOS), hoặc **EncryptedSharedPreferences** (Android)
-- Token hết hạn sau **8 giờ**
-- Khi nhận HTTP 401 → token hết hạn, chuyển về màn hình login
+- Lưu cả `access_token` và `refresh_token` vào **SecureStorage** (Flutter), **Keychain** (iOS), hoặc **EncryptedSharedPreferences** (Android)
+- Access token hết hạn sau **30 phút**
+- Refresh token hết hạn sau **7 ngày**
+- Khi nhận HTTP 401 → gọi refresh endpoint trước, chỉ chuyển về login khi refresh cũng thất bại
 
 **Lỗi:**
 - `401` — Sai username/mật khẩu
 - `403` — Tài khoản chưa duyệt / bị vô hiệu
+
+### Refresh Token — Làm mới access token
+
+Khi access token hết hạn (nhận HTTP 401), gọi endpoint này để lấy token pair mới mà không cần đăng nhập lại.
+
+```
+POST /api/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "a1b2c3d4e5f6..."
+}
+```
+
+**Response 200:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "f6e5d4c3b2a1..."
+}
+```
+
+**Quan trọng:**
+- Sau khi refresh, **phải cập nhật cả 2 token** trong SecureStorage (token rotation — token cũ bị thu hồi)
+- Nếu refresh thất bại (401) → chuyển về màn hình login
+- **Không dùng lại refresh token cũ** sau khi đã refresh — server sẽ phát hiện token reuse và thu hồi toàn bộ phiên
+
+**Lỗi:**
+- `401` — Refresh token không hợp lệ / đã hết hạn / bị thu hồi
 
 ### Gửi request có xác thực
 
@@ -67,7 +100,34 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 
 ### Logout
 
-Xóa token khỏi bộ nhớ app. Không cần gọi API logout (endpoint logout chỉ xóa cookie cho web).
+Gọi API logout với refresh token để thu hồi phiên trên server, sau đó xóa token khỏi bộ nhớ.
+
+```
+POST /api/auth/logout
+Content-Type: application/json
+
+{
+  "refresh_token": "a1b2c3d4e5f6..."
+}
+```
+
+**Response 200:**
+```json
+{ "message": "Đã đăng xuất" }
+```
+
+**Lưu ý:** Sau khi gọi logout, xóa cả `access_token` và `refresh_token` khỏi SecureStorage.
+
+### Xử lý 401 — Recommended Flow
+
+```
+Nhận HTTP 401 từ bất kỳ API nào
+  ├── Có refresh_token trong storage?
+  │     ├── Có → Gọi POST /api/auth/refresh
+  │     │         ├── 200 → Lưu token mới, retry request gốc
+  │     │         └── 401 → Xóa token, chuyển về login
+  │     └── Không → Chuyển về login
+```
 
 ---
 
@@ -362,22 +422,25 @@ Tất cả lỗi trả về format:
 { "detail": "Mô tả lỗi bằng tiếng Việt" }
 ```
 
-| HTTP Status | Ý nghĩa | Xử lý trên mobile |
-|-------------|---------|-------------------|
-| 400 | Dữ liệu không hợp lệ | Hiển thị `detail` cho user |
-| 401 | Chưa đăng nhập / token hết hạn | Chuyển về màn hình login |
-| 403 | Không có quyền | Hiển thị thông báo |
-| 404 | Không tìm thấy | Hiển thị thông báo |
-| 500 | Lỗi server | Hiển thị "Lỗi hệ thống, vui lòng thử lại" |
+| HTTP Status | Ý nghĩa                        | Xử lý trên mobile                            |
+| -------------| --------------------------------| ----------------------------------------------|
+| 400         | Dữ liệu không hợp lệ           | Hiển thị `detail` cho user                   |
+| 401         | Chưa đăng nhập / token hết hạn | Gọi refresh → nếu thất bại → chuyển về login |
+| 403         | Không có quyền                 | Hiển thị thông báo                           |
+| 404         | Không tìm thấy                 | Hiển thị thông báo                           |
+| 500         | Lỗi server                     | Hiển thị "Lỗi hệ thống, vui lòng thử lại"    |
 
 ---
 
 ## 8. Bảo mật
 
 - Luôn gọi API qua **HTTPS**
-- Lưu token vào **SecureStorage** (Flutter), **Keychain** (iOS), **EncryptedSharedPreferences** (Android)
+- Lưu cả `access_token` và `refresh_token` vào **SecureStorage** (Flutter), **Keychain** (iOS), **EncryptedSharedPreferences** (Android)
 - Không lưu token dạng plain text
-- Khi logout, xóa token khỏi bộ nhớ
-- Token hết hạn sau 8 giờ — khi nhận 401, redirect về login
+- Khi logout, gọi `POST /api/auth/logout` với refresh token rồi xóa cả 2 token khỏi bộ nhớ
+- Access token hết hạn sau **30 phút** — khi nhận 401, gọi refresh trước khi redirect về login
+- Refresh token hết hạn sau **7 ngày** — khi refresh thất bại, redirect về login
+- **Không dùng lại refresh token cũ** sau khi đã refresh thành công — server sẽ phát hiện token reuse và thu hồi toàn bộ phiên (bảo vệ chống token theft)
+- Admin có thể thu hồi tất cả phiên của user bất kỳ lúc nào — app nên xử lý gracefully khi refresh thất bại
 
 ---

@@ -1,20 +1,30 @@
 # API Documentation — Bus Attendance System
 
-> Base URL: `https://blogscloud.click/api` (production) hoặc `http://localhost:8000/api` (dev)
+> Base URL: `https://blogscloud.click/api`
 
 ---
 
 ## Authentication
 
-- **Phương thức**: JWT token lưu trong HttpOnly cookie (`access_token`)
+- **Phương thức**: JWT access token + refresh token
+  - **Web**: HttpOnly cookie (`access_token` + `refresh_token`) — tự động gửi kèm request
+  - **Mobile**: Bearer token trong header `Authorization: Bearer <access_token>`, refresh token trong request body
 - **Algorithm**: HS256
-- **Hết hạn**: 480 phút (8 giờ)
-- **Login**: POST `/api/auth/login` → server set cookie tự động
-- **Logout**: POST `/api/auth/logout` → server xóa cookie (không cần đăng nhập)
-- **Dependency**: `get_current_user` đọc JWT từ `Cookie` header (field `access_token`), không dùng Bearer token
-- **Cookie options**: `httponly=True`, `secure=True` (production), `samesite=strict`, `path=/`
+- **Access token**: hết hạn sau 30 phút (cấu hình qua `JWT_ACCESS_EXPIRE_MINUTES`)
+- **Refresh token**: hết hạn sau 7 ngày (cấu hình qua `JWT_REFRESH_EXPIRE_DAYS`), lưu dạng SHA-256 hash trong database
+- **Token rotation**: mỗi lần refresh, token cũ bị thu hồi và cấp token mới (giữ nguyên token family)
+- **Token reuse detection**: nếu refresh token đã bị thu hồi được sử dụng lại → thu hồi toàn bộ token family (phát hiện token theft)
+- **Login**: POST `/api/auth/login` → server set 2 cookie (web) + trả `access_token` và `refresh_token` trong response body (mobile)
+- **Refresh**: POST `/api/auth/refresh` → cấp token pair mới bằng refresh token
+- **Logout**: POST `/api/auth/logout` → thu hồi refresh token trong DB + xóa cả 2 cookie (web). Mobile gửi refresh token trong body.
+- **Dependency**: `get_current_user` đọc JWT từ `Authorization: Bearer` header trước, nếu không có thì đọc từ `Cookie` header
+- **Tương thích ngược**: token cũ (8 giờ, không có `token_type`) vẫn được chấp nhận cho đến khi hết hạn
+- **Cookie options**:
 
-> Mobile dev: Khi gọi API, cần gửi cookie `access_token` trong mỗi request. Nếu dùng framework không hỗ trợ cookie, liên hệ backend team để thêm Bearer token support.
+| Cookie | HttpOnly | Secure | SameSite | Path | Max-Age |
+|--------|----------|--------|----------|------|---------|
+| `access_token` | ✅ | ✅ (prod) | strict | `/` | 30 phút |
+| `refresh_token` | ✅ | ✅ (prod) | strict | `/api/auth` | 7 ngày |
 
 ---
 
@@ -80,7 +90,7 @@ Hệ thống sử dụng **soft delete** cho các entity chính (User, Bus, Rout
 ---
 
 ### POST `/auth/login`
-Đăng nhập, server set HttpOnly cookie.
+Đăng nhập, server set HttpOnly cookie và trả token pair.
 
 **Auth**: Không cần
 
@@ -96,13 +106,16 @@ Hệ thống sử dụng **soft delete** cho các entity chính (User, Bus, Rout
 ```json
 {
   "user_id": 5,
+  "userid": "NVA1234",
   "username": "nguyenvana",
   "full_name": "Nguyễn Văn A",
   "role": "user",
-  "status": "approved"
+  "status": "approved",
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "a1b2c3d4e5f6..."
 }
 ```
-*Cookie `access_token` được set tự động (HttpOnly, Secure trong production, SameSite=strict). Response body KHÔNG chứa token.*
+*Web: Server set 2 cookie — `access_token` (path=/, 30 phút) và `refresh_token` (path=/api/auth, 7 ngày). Mobile: dùng `access_token` và `refresh_token` trong response body.*
 
 **Lỗi**:
 - `401` — Sai username/mật khẩu
@@ -110,10 +123,49 @@ Hệ thống sử dụng **soft delete** cho các entity chính (User, Bus, Rout
 
 ---
 
+### POST `/auth/refresh`
+Làm mới access token bằng refresh token. Token cũ bị thu hồi, cấp token pair mới (token rotation).
+
+**Auth**: Không cần (xác thực qua refresh token)
+
+**Request Body** (mobile):
+```json
+{
+  "refresh_token": "a1b2c3d4e5f6..."
+}
+```
+*Web: không cần body — refresh token được gửi tự động qua HttpOnly cookie.*
+
+**Response** `200`:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "f6e5d4c3b2a1..."
+}
+```
+*Web: Server set lại cả 2 cookie với token mới.*
+
+**Lỗi**:
+- `401` — Refresh token không được cung cấp
+- `401` — Refresh token không hợp lệ
+- `401` — Refresh token đã hết hạn, vui lòng đăng nhập lại
+- `401` — Phát hiện sử dụng lại token, tất cả phiên đã bị thu hồi (token reuse detection)
+- `401` — Tài khoản không hợp lệ (user bị disable hoặc không tồn tại)
+
+---
+
 ### POST `/auth/logout`
-Đăng xuất, xóa cookie.
+Đăng xuất — thu hồi refresh token trong database và xóa cookies.
 
 **Auth**: Không cần (endpoint không có dependency xác thực)
+
+**Request Body** (mobile):
+```json
+{
+  "refresh_token": "a1b2c3d4e5f6..."
+}
+```
+*Web: không cần body — refresh token được đọc từ cookie. Body là optional.*
 
 **Response** `200`:
 ```json
@@ -522,7 +574,7 @@ Từ chối tài khoản.
 ---
 
 ### POST `/admin/users/{user_id}/disable`
-Vô hiệu tài khoản. Không thể vô hiệu chính mình hoặc admin khác.
+Vô hiệu tài khoản. Không thể vô hiệu chính mình hoặc admin khác. **Tự động thu hồi tất cả refresh token** của user.
 
 **Auth**: Admin
 
@@ -530,6 +582,24 @@ Vô hiệu tài khoản. Không thể vô hiệu chính mình hoặc admin khác
 ```json
 { "message": "Đã vô hiệu tài khoản Nguyễn Văn A" }
 ```
+
+---
+
+### POST `/admin/users/{user_id}/revoke-sessions`
+Thu hồi tất cả phiên đăng nhập (refresh token) của user. User sẽ phải đăng nhập lại trên tất cả thiết bị.
+
+**Auth**: Admin
+
+**Response** `200`:
+```json
+{
+  "message": "Đã thu hồi 3 phiên của Nguyễn Văn A",
+  "revoked_count": 3
+}
+```
+
+**Lỗi**:
+- `404` — User không tồn tại
 
 ---
 
