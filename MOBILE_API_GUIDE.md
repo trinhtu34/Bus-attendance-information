@@ -1,0 +1,383 @@
+# Hướng dẫn tích hợp API cho Mobile App
+
+> Base URL: `https://blogscloud.click/api`
+
+---
+
+## 1. Xác thực (Authentication)
+
+Mobile app sử dụng **Bearer Token** thay vì cookie.
+
+### Luồng xác thực
+
+```
+1. Login → nhận access_token trong response body
+2. Lưu token vào SecureStorage
+3. Mọi request sau → gửi header: Authorization: Bearer <token>
+4. Logout → xóa token khỏi bộ nhớ
+```
+
+### Login
+
+```
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "nguyenvana",
+  "password": "matkhau123"
+}
+```
+
+**Response 200:**
+```json
+{
+  "user_id": 5,
+  "userid": "NVA1234",
+  "username": "nguyenvana",
+  "full_name": "Nguyễn Văn A",
+  "role": "user",
+  "status": "approved",
+  "access_token": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+**Lưu ý:**
+- Lưu `access_token` vào **SecureStorage** (Flutter), **Keychain** (iOS), hoặc **EncryptedSharedPreferences** (Android)
+- Token hết hạn sau **8 giờ**
+- Khi nhận HTTP 401 → token hết hạn, chuyển về màn hình login
+
+**Lỗi:**
+- `401` — Sai username/mật khẩu
+- `403` — Tài khoản chưa duyệt / bị vô hiệu
+
+### Gửi request có xác thực
+
+Mọi API yêu cầu đăng nhập đều cần header:
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+**Ví dụ lấy thông tin user:**
+```
+GET /api/auth/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+### Logout
+
+Xóa token khỏi bộ nhớ app. Không cần gọi API logout (endpoint logout chỉ xóa cookie cho web).
+
+---
+
+## 2. Đăng ký tài khoản
+
+```
+POST /api/auth/register
+Content-Type: application/json
+
+{
+  "username": "nguyenvana",
+  "password": "matkhau123",
+  "full_name": "Nguyễn Văn A",
+  "short_name": "NVA",
+  "rank": "Đại úy",
+  "position": "Trưởng phòng",
+  "phone": "0901234567",
+  "email": "nva@gmail.com",
+  "department": "Phòng Kỹ thuật"
+}
+```
+
+**Bắt buộc:** username, password, full_name, short_name. Còn lại optional.
+
+**Response 201:**
+```json
+{
+  "message": "Đăng ký thành công. Vui lòng chờ admin phê duyệt.",
+  "user_id": 5
+}
+```
+
+**Lưu ý:** Tài khoản mới ở trạng thái `pending`, cần admin duyệt trước khi login được.
+
+---
+
+## 3. Thông tin user
+
+```
+GET /api/auth/me
+Authorization: Bearer <token>
+```
+
+**Response 200:**
+```json
+{
+  "user_id": 5,
+  "username": "nguyenvana",
+  "userid": "NVA1234",
+  "full_name": "Nguyễn Văn A",
+  "short_name": "NVA",
+  "email": "nva@gmail.com",
+  "phone": "0901234567",
+  "department": "Phòng Kỹ thuật",
+  "role": "user",
+  "status": "approved"
+}
+```
+
+---
+
+## 4. Đăng ký tuyến xe
+
+### Xem tuyến xe khả dụng
+
+```
+GET /api/registration/routes-available
+Authorization: Bearer <token>
+```
+
+**Response 200:**
+```json
+[
+  {
+    "route_id": 1,
+    "route_code": "R001",
+    "route_name": "Hà Nội → Nam Định",
+    "go_time": "06:30 - 08:00",
+    "pickup_name": "Bến xe Giáp Bát",
+    "dropoff_name": "Bến xe Nam Định"
+  }
+]
+```
+
+### Đăng ký tuyến
+
+```
+POST /api/registration/register
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "route_id": 1,
+  "ride_date": "2026-04-25"
+}
+```
+
+**Quy tắc:**
+- `ride_date` phải là ngày tương lai
+- Không đăng ký trùng tuyến + ngày
+- Không đăng ký 2 tuyến cùng giờ trong cùng ngày
+
+### Xem đăng ký của tôi
+
+```
+GET /api/registration/my-dates
+Authorization: Bearer <token>
+```
+
+**Response 200:**
+```json
+{
+  "today": "2026-04-23",
+  "current_time": "10:30",
+  "is_within_hours": true,
+  "registrations": [
+    {
+      "ride_date": "2026-04-25",
+      "route_id": 1,
+      "route_name": "Hà Nội → Nam Định",
+      "route_code": "R001",
+      "registration_id": 12
+    }
+  ]
+}
+```
+
+### Hủy đăng ký
+
+```
+POST /api/registration/cancel/{registration_id}
+Authorization: Bearer <token>
+```
+
+---
+
+## 5. Chấm công (Attendance)
+
+Luồng chấm công trên mobile:
+
+```
+1. Quét QR trên xe → lấy qr_token
+2. Validate QR → lấy thông tin xe
+3. Chụp selfie → upload ảnh
+4. Lấy GPS → gửi chấm công
+```
+
+### Bước 1: Validate QR (không cần auth)
+
+```
+GET /api/qrcodes/validate/{qr_token}
+```
+
+**Response 200:**
+```json
+{
+  "valid": true,
+  "bus_id": 1,
+  "bus_code": "BUS001",
+  "bus_name": "Xe số 1",
+  "license_plate": "29A-12345",
+  "route": {
+    "route_id": 1,
+    "route_code": "R001",
+    "route_name": "Hà Nội → Nam Định",
+    "go_start_time": "06:30",
+    "go_end_time": "08:00"
+  }
+}
+```
+
+### Bước 2: Upload selfie
+
+```
+POST /api/attendance/upload-selfie
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+
+file: <ảnh JPG/PNG/WEBP, max 5MB>
+```
+
+**Response 200:**
+```json
+{
+  "selfie_url": "/api/attendance/selfie-image/attendance-selfie/2026-04-23/abc123.jpg",
+  "filename": "abc123.jpg"
+}
+```
+
+### Bước 3: Gửi chấm công
+
+```
+POST /api/attendance/submit
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "qr_token": "hZAFavsEn-2PmibszhnLuH9rSjNnykUh_HRQ9CuAH3I",
+  "gps_lat": 21.0285,
+  "gps_lng": 105.8542,
+  "gps_accuracy": 15.0,
+  "selfie_url": "/api/attendance/selfie-image/attendance-selfie/2026-04-23/abc123.jpg"
+}
+```
+
+**Thành công:**
+```json
+{
+  "result": "success",
+  "message": "Chấm công thành công!",
+  "data": {
+    "employee": "Nguyễn Văn A",
+    "bus": "BUS001",
+    "route": "Hà Nội → Nam Định",
+    "time": "07:15:30",
+    "date": "2026-04-23",
+    "distance_m": 45
+  }
+}
+```
+
+**Từ chối:**
+```json
+{
+  "result": "rejected",
+  "message": "Ngoài giờ chấm công (06:30 → 08:00). Giờ hiện tại: 09:15"
+}
+```
+
+**Server kiểm tra theo thứ tự:**
+1. QR token hợp lệ + active
+2. Xe đang hoạt động
+3. Xe có tuyến active
+4. Giờ hiện tại trong khung giờ tuyến
+5. Chưa chấm công hôm nay (cùng user + ngày + tuyến)
+6. GPS gần điểm đón (mặc định 150m)
+
+---
+
+## 6. Đăng ký suất ăn
+
+### Đăng ký
+
+```
+POST /api/meals/register
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "meal_date": "2026-04-25" }
+```
+
+**Quy tắc:**
+- Khung giờ đăng ký: 8:00 → 19:00 (UTC+7)
+- Deadline: trước 19:00 ngày hôm trước
+- 1 user chỉ đăng ký 1 lần/ngày
+
+### Hủy đăng ký
+
+```
+POST /api/meals/cancel
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "meal_date": "2026-04-25" }
+```
+
+### Xem ngày đã đăng ký
+
+```
+GET /api/meals/my-dates
+Authorization: Bearer <token>
+```
+
+**Response 200:**
+```json
+{
+  "today": "2026-04-23",
+  "current_time": "10:30",
+  "open_time": "8:00",
+  "cutoff_time": "19:00",
+  "is_within_hours": true,
+  "registered_dates": ["2026-04-24", "2026-04-25"]
+}
+```
+
+---
+
+## 7. Xử lý lỗi
+
+Tất cả lỗi trả về format:
+```json
+{ "detail": "Mô tả lỗi bằng tiếng Việt" }
+```
+
+| HTTP Status | Ý nghĩa | Xử lý trên mobile |
+|-------------|---------|-------------------|
+| 400 | Dữ liệu không hợp lệ | Hiển thị `detail` cho user |
+| 401 | Chưa đăng nhập / token hết hạn | Chuyển về màn hình login |
+| 403 | Không có quyền | Hiển thị thông báo |
+| 404 | Không tìm thấy | Hiển thị thông báo |
+| 500 | Lỗi server | Hiển thị "Lỗi hệ thống, vui lòng thử lại" |
+
+---
+
+## 8. Bảo mật
+
+- Luôn gọi API qua **HTTPS**
+- Lưu token vào **SecureStorage** (Flutter), **Keychain** (iOS), **EncryptedSharedPreferences** (Android)
+- Không lưu token dạng plain text
+- Khi logout, xóa token khỏi bộ nhớ
+- Token hết hạn sau 8 giờ — khi nhận 401, redirect về login
+
+---
