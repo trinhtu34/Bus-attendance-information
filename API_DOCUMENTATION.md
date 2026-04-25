@@ -509,6 +509,79 @@ Gửi chấm công. User ID lấy từ JWT cookie.
 
 ---
 
+### GET `/attendance/my-attendance`
+Xem lịch sử chấm công của user hiện tại.
+
+**Auth**: Cần đăng nhập
+
+**Query params**:
+- `date_from` (optional, YYYY-MM-DD) — ngày bắt đầu
+- `date_to` (optional, YYYY-MM-DD) — ngày kết thúc
+- `status` (optional: success/rejected) — lọc theo trạng thái
+- `limit` (optional, default: 50) — số bản ghi mỗi trang
+- `offset` (optional, default: 0) — vị trí bắt đầu (phân trang)
+
+**Response** `200`:
+```json
+{
+  "total": 15,
+  "limit": 10,
+  "offset": 0,
+  "data": [
+    {
+      "log_id": 100,
+      "attendance_date": "2026-04-23",
+      "checkin_time": "07:15:30",
+      "result_status": "success",
+      "reject_reason": null,
+      "distance_to_stop_m": 45.5,
+      "selfie_url": "/api/attendance/selfie-image/attendance-selfie/2026-04-23/abc123.jpg",
+      "bus": {
+        "bus_id": 1,
+        "bus_code": "BUS001",
+        "bus_name": "Xe số 1",
+        "license_plate": "29A-12345"
+      },
+      "route": {
+        "route_id": 1,
+        "route_code": "R001",
+        "route_name": "Hà Nội → Nam Định"
+      }
+    },
+    {
+      "log_id": 99,
+      "attendance_date": "2026-04-22",
+      "checkin_time": "07:20:15",
+      "result_status": "rejected",
+      "reject_reason": "Ngoài giờ chấm công (06:30 → 08:00). Giờ hiện tại: 09:15",
+      "distance_to_stop_m": null,
+      "selfie_url": null,
+      "bus": {
+        "bus_id": 1,
+        "bus_code": "BUS001",
+        "bus_name": "Xe số 1",
+        "license_plate": "29A-12345"
+      },
+      "route": {
+        "route_id": 1,
+        "route_code": "R001",
+        "route_name": "Hà Nội → Nam Định"
+      }
+    }
+  ]
+}
+```
+
+**Lưu ý**:
+- Chỉ trả về các bản ghi của user hiện tại (user_id từ JWT)
+- Sắp xếp theo ngày giảm dần (mới nhất trước)
+- `selfie_url` có thể là `null` nếu không có ảnh
+- `distance_to_stop_m` có thể là `null` nếu không có GPS
+- `result_status` là `success` hoặc `rejected`
+- `reject_reason` chỉ có giá trị khi `result_status` là `rejected`
+
+---
+
 ## 4. Meals — Đăng ký suất ăn (User)
 
 ### POST `/meals/register`
