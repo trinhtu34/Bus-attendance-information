@@ -143,12 +143,16 @@ GET /api/employee-names
 **Response 200:**
 ```json
 [
-  { "id": 1, "full_name": "Nguyễn Văn A" },
-  { "id": 2, "full_name": "Trần Thị B" }
+  { "id": 1, "employee_code": "NNC", "full_name": "Nguyễn Ngọc Cương" },
+  { "id": 2, "employee_code": "0083", "full_name": "Nguyễn Thành Vinh" },
+  { "id": 3, "employee_code": "", "full_name": "Trần Thị B" }
 ]
 ```
 
-**Lưu ý:** Chỉ trả tên active và chưa có user nào sử dụng. Dùng cho dropdown chọn tên khi đăng ký.
+**Lưu ý:**
+- Chỉ trả tên active và chưa có user nào sử dụng. Dùng cho dropdown chọn tên khi đăng ký.
+- `employee_code` có thể rỗng `""` nếu admin chưa nhập mã NV.
+- Hiển thị dropdown: `"NNC — Nguyễn Ngọc Cương"` hoặc chỉ tên nếu code rỗng.
 
 ### Bước 2: Gửi đăng ký
 
@@ -375,92 +379,6 @@ Content-Type: application/json
 4. Giờ hiện tại trong khung giờ tuyến
 5. Chưa chấm công hôm nay (cùng user + ngày + tuyến)
 6. GPS gần điểm đón (mặc định 150m)
-
-### Bước 4: Xem lịch sử chấm công
-
-```
-GET /api/attendance/my-attendance?date_from=2026-04-01&date_to=2026-04-30&status=success&limit=10&offset=0
-Authorization: Bearer <token>
-```
-
-**Query params (tất cả optional):**
-- `date_from` — ngày bắt đầu (YYYY-MM-DD)
-- `date_to` — ngày kết thúc (YYYY-MM-DD)
-- `status` — lọc theo trạng thái: `success` hoặc `rejected`
-- `limit` — số bản ghi mỗi trang (default: 50)
-- `offset` — vị trí bắt đầu (default: 0)
-
-**Response 200:**
-```json
-{
-  "total": 15,
-  "limit": 10,
-  "offset": 0,
-  "data": [
-    {
-      "log_id": 100,
-      "attendance_date": "2026-04-23",
-      "checkin_time": "07:15:30",
-      "result_status": "success",
-      "reject_reason": null,
-      "distance_to_stop_m": 45.5,
-      "selfie_url": "/api/attendance/selfie-image/attendance-selfie/2026-04-23/abc123.jpg",
-      "bus": {
-        "bus_id": 1,
-        "bus_code": "BUS001",
-        "bus_name": "Xe số 1",
-        "license_plate": "29A-12345"
-      },
-      "route": {
-        "route_id": 1,
-        "route_code": "R001",
-        "route_name": "Hà Nội → Nam Định"
-      }
-    },
-    {
-      "log_id": 99,
-      "attendance_date": "2026-04-22",
-      "checkin_time": "07:20:15",
-      "result_status": "rejected",
-      "reject_reason": "Ngoài giờ chấm công (06:30 → 08:00). Giờ hiện tại: 09:15",
-      "distance_to_stop_m": null,
-      "selfie_url": null,
-      "bus": {
-        "bus_id": 1,
-        "bus_code": "BUS001",
-        "bus_name": "Xe số 1",
-        "license_plate": "29A-12345"
-      },
-      "route": {
-        "route_id": 1,
-        "route_code": "R001",
-        "route_name": "Hà Nội → Nam Định"
-      }
-    }
-  ]
-}
-```
-
-**Lưu ý:**
-- Chỉ trả về các bản ghi của user hiện tại
-- Sắp xếp theo ngày giảm dần (mới nhất trước)
-- `selfie_url` có thể là `null` nếu không có ảnh
-- `distance_to_stop_m` có thể là `null` nếu không có GPS
-- `result_status` là `success` hoặc `rejected`
-- `reject_reason` chỉ có giá trị khi `result_status` là `rejected`
-- Sử dụng `total`, `limit`, `offset` để implement phân trang
-
-**Ví dụ sử dụng:**
-```
-// Lấy tất cả bản ghi trong tháng 4
-GET /api/attendance/my-attendance?date_from=2026-04-01&date_to=2026-04-30
-
-// Chỉ lấy bản ghi thành công
-GET /api/attendance/my-attendance?status=success
-
-// Phân trang: trang 2, mỗi trang 10 bản ghi
-GET /api/attendance/my-attendance?limit=10&offset=10
-```
 
 ---
 

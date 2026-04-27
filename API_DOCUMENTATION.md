@@ -200,17 +200,21 @@ Danh sách tên nhân viên active và chưa có user nào sử dụng — dùng
 **Response** `200`:
 ```json
 [
-  { "id": 1, "full_name": "Nguyễn Văn A" },
-  { "id": 2, "full_name": "Trần Thị B" }
+  { "id": 1, "employee_code": "NNC", "full_name": "Nguyễn Ngọc Cương" },
+  { "id": 2, "employee_code": "0083", "full_name": "Nguyễn Thành Vinh" },
+  { "id": 3, "employee_code": "", "full_name": "Trần Thị B" }
 ]
 ```
 
-**Lưu ý**: Chỉ trả tên `is_active = 1` và chưa có user active (`is_deleted = 0`) nào dùng. Tên "Administrator" và các tên đã được đăng ký sẽ không xuất hiện.
+**Lưu ý**:
+- Chỉ trả tên `is_active = 1` và chưa có user active (`is_deleted = 0`) nào dùng.
+- `employee_code` có thể rỗng `""` nếu admin chưa nhập mã NV.
+- Frontend nên hiển thị: `"NNC — Nguyễn Ngọc Cương"` hoặc chỉ `"Nguyễn Ngọc Cương"` nếu code rỗng.
 
 ---
 
 ### GET `/admin/employee-names`
-Danh sách tất cả tên (kể cả inactive) — admin view.
+Danh sách nhân viên active — admin view.
 
 **Auth**: Admin
 
@@ -219,63 +223,89 @@ Danh sách tất cả tên (kể cả inactive) — admin view.
 [
   {
     "id": 1,
-    "full_name": "Nguyễn Văn A",
+    "employee_code": "NNC",
+    "full_name": "Nguyễn Ngọc Cương",
     "is_active": 1,
-    "user_count": 1,
+    "department": "Phòng IT",
+    "email": "nnc@company.com",
+    "has_account": true,
+    "user_status": "approved",
     "created_at": "2026-04-20T10:00:00"
   }
 ]
 ```
 
+**Các giá trị `user_status`**: `"pending"`, `"approved"`, `"rejected"`, `"disabled"`, `""` (chưa có TK)
+
 ---
 
 ### POST `/admin/employee-names`
-Thêm tên mới. Nếu tên inactive đã tồn tại → kích hoạt lại thay vì tạo mới.
+Thêm nhân viên mới. Nếu tên inactive đã tồn tại → kích hoạt lại thay vì tạo mới.
 
 **Auth**: Admin
 
 **Request Body**:
 ```json
-{ "full_name": "Nguyễn Văn C" }
+{ "employee_code": "NVC", "full_name": "Nguyễn Văn C" }
 ```
+*`employee_code` optional, phải unique nếu có giá trị.*
 
 **Response** `200`:
 ```json
-{ "message": "Đã thêm tên 'Nguyễn Văn C'", "id": 3 }
+{ "message": "Đã thêm 'NVC - Nguyễn Văn C'", "id": 3 }
 ```
+
+**Lỗi**:
+- `400` — Mã NV đã tồn tại
+- `400` — Tên không được để trống
 
 ---
 
 ### PUT `/admin/employee-names/{id}`
-Sửa tên hoặc toggle active/inactive.
+Sửa thông tin nhân viên hoặc toggle active/inactive.
 
 **Auth**: Admin
 
 **Request Body**:
 ```json
-{ "full_name": "Nguyễn Văn D", "is_active": 0 }
+{ "employee_code": "NVD", "full_name": "Nguyễn Văn D", "is_active": 0 }
 ```
 *Tất cả fields optional.*
 
 **Response** `200`:
 ```json
-{ "message": "Đã cập nhật tên 'Nguyễn Văn D'" }
+{ "message": "Đã cập nhật 'Nguyễn Văn D'" }
 ```
 
 ---
 
 ### DELETE `/admin/employee-names/{id}`
-Xóa tên. Chỉ cho phép nếu chưa có user nào dùng.
+Soft-delete nhân viên. Nếu có tài khoản liên kết, yêu cầu `force=true`.
 
 **Auth**: Admin
 
+**Params**: `?force=true` (optional)
+
+**Flow**:
+1. Gọi không có `force` → nếu có account liên kết, trả `409` với thông tin
+2. Frontend hiện confirm → gọi lại với `?force=true`
+3. Soft-delete employee_name + soft-delete user liên kết
+
 **Response** `200`:
 ```json
-{ "message": "Đã xóa tên 'Nguyễn Văn C'" }
+{ "message": "Đã xóa 'Nguyễn Văn A' và vô hiệu 1 tài khoản liên kết" }
 ```
 
-**Lỗi**:
-- `400` — Không thể xóa — có N tài khoản đang dùng tên này
+**Response** `409` (có account, chưa force):
+```json
+{
+  "detail": {
+    "message": "Nhân viên 'Nguyễn Văn A' đang có 1 tài khoản liên kết.",
+    "linked_emails": ["nva@gmail.com"],
+    "require_force": true
+  }
+}
+```
 
 ---
 
@@ -506,79 +536,6 @@ Gửi chấm công. User ID lấy từ JWT cookie.
 4. Giờ hiện tại trong khung giờ tuyến
 5. Chưa chấm công hôm nay (cùng user + ngày + tuyến)
 6. GPS gần điểm đón (≤ threshold, mặc định 150m)
-
----
-
-### GET `/attendance/my-attendance`
-Xem lịch sử chấm công của user hiện tại.
-
-**Auth**: Cần đăng nhập
-
-**Query params**:
-- `date_from` (optional, YYYY-MM-DD) — ngày bắt đầu
-- `date_to` (optional, YYYY-MM-DD) — ngày kết thúc
-- `status` (optional: success/rejected) — lọc theo trạng thái
-- `limit` (optional, default: 50) — số bản ghi mỗi trang
-- `offset` (optional, default: 0) — vị trí bắt đầu (phân trang)
-
-**Response** `200`:
-```json
-{
-  "total": 15,
-  "limit": 10,
-  "offset": 0,
-  "data": [
-    {
-      "log_id": 100,
-      "attendance_date": "2026-04-23",
-      "checkin_time": "07:15:30",
-      "result_status": "success",
-      "reject_reason": null,
-      "distance_to_stop_m": 45.5,
-      "selfie_url": "/api/attendance/selfie-image/attendance-selfie/2026-04-23/abc123.jpg",
-      "bus": {
-        "bus_id": 1,
-        "bus_code": "BUS001",
-        "bus_name": "Xe số 1",
-        "license_plate": "29A-12345"
-      },
-      "route": {
-        "route_id": 1,
-        "route_code": "R001",
-        "route_name": "Hà Nội → Nam Định"
-      }
-    },
-    {
-      "log_id": 99,
-      "attendance_date": "2026-04-22",
-      "checkin_time": "07:20:15",
-      "result_status": "rejected",
-      "reject_reason": "Ngoài giờ chấm công (06:30 → 08:00). Giờ hiện tại: 09:15",
-      "distance_to_stop_m": null,
-      "selfie_url": null,
-      "bus": {
-        "bus_id": 1,
-        "bus_code": "BUS001",
-        "bus_name": "Xe số 1",
-        "license_plate": "29A-12345"
-      },
-      "route": {
-        "route_id": 1,
-        "route_code": "R001",
-        "route_name": "Hà Nội → Nam Định"
-      }
-    }
-  ]
-}
-```
-
-**Lưu ý**:
-- Chỉ trả về các bản ghi của user hiện tại (user_id từ JWT)
-- Sắp xếp theo ngày giảm dần (mới nhất trước)
-- `selfie_url` có thể là `null` nếu không có ảnh
-- `distance_to_stop_m` có thể là `null` nếu không có GPS
-- `result_status` là `success` hoặc `rejected`
-- `reject_reason` chỉ có giá trị khi `result_status` là `rejected`
 
 ---
 
