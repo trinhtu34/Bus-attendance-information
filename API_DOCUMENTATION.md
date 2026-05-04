@@ -1,1640 +1,901 @@
-# API Documentation — Bus Attendance System
+# 📋 API Documentation — Bus Attendance System (Z103)
 
-> Base URL: `https://blogscloud.click/api` (production) hoặc `http://localhost:8000/api` (dev)
-
----
-
-## Authentication
-
-- **Phương thức**: JWT access token + refresh token
-  - **Web**: HttpOnly cookie (`access_token` + `refresh_token`) — tự động gửi kèm request
-  - **Mobile**: Bearer token trong header `Authorization: Bearer <access_token>`, refresh token trong request body
-- **Algorithm**: HS256
-- **Access token**: hết hạn sau 30 phút (cấu hình qua `JWT_ACCESS_EXPIRE_MINUTES`)
-- **Refresh token**: hết hạn sau 7 ngày (cấu hình qua `JWT_REFRESH_EXPIRE_DAYS`), lưu dạng SHA-256 hash trong database
-- **Token rotation**: mỗi lần refresh, token cũ bị thu hồi và cấp token mới (giữ nguyên token family)
-- **Token reuse detection**: nếu refresh token đã bị thu hồi được sử dụng lại → thu hồi toàn bộ token family (phát hiện token theft)
-- **Login**: POST `/api/auth/login` → server set 2 cookie (web) + trả `access_token` và `refresh_token` trong response body (mobile)
-- **Refresh**: POST `/api/auth/refresh` → cấp token pair mới bằng refresh token
-- **Logout**: POST `/api/auth/logout` → thu hồi refresh token trong DB + xóa cả 2 cookie (web). Mobile gửi refresh token trong body.
-- **Dependency**: `get_current_user` đọc JWT từ `Authorization: Bearer` header trước, nếu không có thì đọc từ `Cookie` header
-- **Tương thích ngược**: token cũ (8 giờ, không có `token_type`) vẫn được chấp nhận cho đến khi hết hạn
-- **Cookie options**:
-
-| Cookie | HttpOnly | Secure | SameSite | Path | Max-Age |
-|--------|----------|--------|----------|------|---------|
-| `access_token` | ✅ | ✅ (prod) | strict | `/` | 30 phút |
-| `refresh_token` | ✅ | ✅ (prod) | strict | `/api/auth` | 7 ngày |
+> **Phiên bản:** 1.0  
+> **Cập nhật:** 04/05/2026  
+> **Framework:** ASP.NET Core + ABP Framework  
+> **Base URL:** `https://{domain}`
 
 ---
 
-## Error Format
+## Mục lục
 
-Tất cả lỗi trả về format:
-```json
-{
-  "detail": "Mô tả lỗi bằng tiếng Việt"
-}
-```
-
-HTTP Status codes:
-- `400` — Bad request (dữ liệu không hợp lệ, vi phạm business rule)
-- `401` — Chưa đăng nhập hoặc token hết hạn
-- `403` — Không có quyền (cần admin)
-- `404` — Không tìm thấy resource
-- `500` — Lỗi server
-
----
-
-## Soft Delete
-
-Hệ thống sử dụng **soft delete** cho các entity chính (User, Bus, Route, Location, Driver):
-- Cột `is_deleted` (0/1) đánh dấu đã xóa
-- Khi xóa, các trường unique (email, bus_code, route_code) được append suffix `__del_{timestamp}` để giải phóng constraint
-- Trạng thái chuyển sang `inactive` / `disabled`
-- Dữ liệu vẫn tồn tại trong DB, chỉ bị ẩn khỏi danh sách
+1. [Xác thực & Phân quyền](#1-xác-thực--phân-quyền)
+2. [Đăng ký & Đăng nhập](#2-đăng-ký--đăng-nhập)
+3. [Quản lý xe buýt](#3-quản-lý-xe-buýt)
+   - [Điểm đón/trả (Location)](#31-điểm-đóntrả-location)
+   - [Tuyến xe (Route)](#32-tuyến-xe-route)
+   - [Xe buýt (Bus)](#33-xe-buýt-bus)
+   - [Mã QR (QR Code)](#34-mã-qr-qr-code)
+   - [Gán tuyến cho xe](#35-gán-tuyến-cho-xe)
+4. [Đăng ký tuyến xe](#4-đăng-ký-tuyến-xe)
+5. [Chấm công](#5-chấm-công)
+6. [Quản lý suất ăn](#6-quản-lý-suất-ăn)
+7. [Yêu cầu xe đột xuất](#7-yêu-cầu-xe-đột-xuất)
+8. [Cấu hình hệ thống](#8-cấu-hình-hệ-thống)
 
 ---
 
-## 1. Auth — Xác thực
+## 1. Xác thực & Phân quyền
 
-### POST `/auth/register`
-Đăng ký tài khoản mới. Tài khoản ở trạng thái `pending`, cần admin duyệt.
+### Cơ chế xác thực
 
-**Auth**: Không cần
+Hệ thống sử dụng **Cookie-based Authentication** (ABP Framework). Sau khi đăng nhập thành công, server trả về cookie xác thực, browser tự gửi kèm trong các request tiếp theo.
 
-**Bước 1**: Lấy danh sách tên từ `GET /api/employee-names` (public, không cần auth) để hiển thị dropdown.
+### Phân quyền (Permissions)
 
-**Request Body**:
-```json
-{
-  "email": "nva@gmail.com",
-  "password": "matkhau123",
-  "employee_name_id": 1,
-  "department": "Phòng Kỹ thuật"
-}
-```
-*Bắt buộc: email, password, employee_name_id. `department` optional.*
+| Permission | Mô tả |
+|---|---|
+| `BusAtt` | Quyền gốc — truy cập module Bus Attendance |
+| `BusAtt.Location` | Xem điểm đón/trả |
+| `BusAtt.Location.Create/Edit/Delete` | CRUD điểm đón/trả |
+| `BusAtt.Route` | Xem tuyến xe |
+| `BusAtt.Route.Create/Edit/Delete` | CRUD tuyến xe |
+| `BusAtt.Bus` | Xem xe buýt |
+| `BusAtt.Bus.Create/Edit/Delete` | CRUD xe buýt |
+| `BusAtt.QRCode` | Xem mã QR |
+| `BusAtt.QRCode.Create` | Tạo/cấp lại mã QR |
+| `BusAtt.Registration` | Xem đăng ký tuyến |
+| `BusAtt.Registration.Register` | Tự đăng ký tuyến |
+| `BusAtt.Registration.Create/Edit/Delete` | Admin quản lý đăng ký |
+| `BusAtt.Attendance` | Xem log chấm công |
+| `BusAtt.Attendance.Create` | Gửi chấm công |
+| `Meal.MealRegistration` | Xem đăng ký suất ăn |
+| `Meal.MealRegistration.Register` | Tự đăng ký suất ăn |
+| `Meal.MealRegistration.Kitchen` | Xem tất cả (nhà bếp) |
+| `Meal.MealRegistration.Create/Edit/Delete` | Admin quản lý suất ăn |
 
-**Response** `201`:
-```json
-{
-  "message": "Đăng ký thành công. Vui lòng chờ admin phê duyệt.",
-  "user_id": 5
-}
-```
+### Vai trò
 
----
-
-### POST `/auth/login`
-Đăng nhập, server set HttpOnly cookie và trả token pair.
-
-**Auth**: Không cần
-
-**Request Body**:
-```json
-{
-  "email": "nva@gmail.com",
-  "password": "matkhau123"
-}
-```
-
-**Response** `200`:
-```json
-{
-  "user_id": 5,
-  "email": "nva@gmail.com",
-  "full_name": "Nguyễn Văn A",
-  "role": "user",
-  "status": "approved",
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "a1b2c3d4e5f6..."
-}
-```
-*Web: Server set 2 cookie — `access_token` (path=/, 30 phút) và `refresh_token` (path=/api/auth, 7 ngày). Mobile: dùng `access_token` và `refresh_token` trong response body.*
-
-**Lỗi**:
-- `401` — Sai email/mật khẩu
-- `403` — Tài khoản pending/rejected/disabled
+| Vai trò | Mô tả |
+|---|---|
+| **Admin** | Toàn quyền quản lý |
+| **Bus_Admin** | Quản lý xe, tuyến, điểm đón, duyệt yêu cầu đột xuất |
+| **Driver** | Tài xế — chỉ xem xe được gán |
+| **Kitchen** | Nhà bếp — xem tất cả đăng ký suất ăn |
+| **User** | Nhân viên — đăng ký tuyến, chấm công, đăng ký suất ăn |
 
 ---
 
-### POST `/auth/refresh`
-Làm mới access token bằng refresh token. Token cũ bị thu hồi, cấp token pair mới (token rotation).
+## 2. Đăng ký & Đăng nhập
 
-**Auth**: Không cần (xác thực qua refresh token)
+### 2.1 Đăng ký tài khoản
 
-**Request Body** (mobile):
-```json
-{
-  "refresh_token": "a1b2c3d4e5f6..."
-}
 ```
-*Web: không cần body — refresh token được gửi tự động qua HttpOnly cookie.*
-
-**Response** `200`:
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "f6e5d4c3b2a1..."
-}
+POST /Account/Register
 ```
-*Web: Server set lại cả 2 cookie với token mới.*
 
-**Lỗi**:
-- `401` — Refresh token không được cung cấp
-- `401` — Refresh token không hợp lệ
-- `401` — Refresh token đã hết hạn, vui lòng đăng nhập lại
-- `401` — Phát hiện sử dụng lại token, tất cả phiên đã bị thu hồi (token reuse detection)
-- `401` — Tài khoản không hợp lệ (user bị disable hoặc không tồn tại)
+**Mô tả:** Đăng ký tài khoản mới. Tài khoản sẽ ở trạng thái **inactive** cho đến khi admin phê duyệt.
+
+**Auth:** Không yêu cầu (public)
+
+**Request Body** (form-data):
+
+| Field | Type | Required | Mô tả |
+|---|---|---|---|
+| `EmployeeId` | int | ✅ | ID nhân viên (chọn từ dropdown) |
+| `EmailAddress` | string | ✅ | Email đăng nhập |
+| `Password` | string | ✅ | Mật khẩu |
+| `PasswordRepeat` | string | ✅ | Nhập lại mật khẩu |
+
+**Response:** Redirect tới trang kết quả đăng ký
+
+**Logic xử lý:**
+- Kiểm tra Employee tồn tại và chưa được liên kết (`UserId == null`)
+- Tạo User với `IsActive = false` (chờ admin duyệt)
+- Liên kết Employee → User (`employee.UserId = user.Id`)
+- Gán vai trò từ `Employee.RoleId`
+- `ShortName` tự lấy từ `Employee.Code`
 
 ---
 
-### POST `/auth/logout`
-Đăng xuất — thu hồi refresh token trong database và xóa cookies.
+### 2.2 Lấy thông tin nhân viên (cho form đăng ký)
 
-**Auth**: Không cần (endpoint không có dependency xác thực)
-
-**Request Body** (mobile):
-```json
-{
-  "refresh_token": "a1b2c3d4e5f6..."
-}
 ```
-*Web: không cần body — refresh token được đọc từ cookie. Body là optional.*
-
-**Response** `200`:
-```json
-{ "message": "Đã đăng xuất" }
+GET /Account/GetEmployeeInfo?employeeId={id}
 ```
 
----
+**Mô tả:** Trả về thông tin nhân viên khi chọn từ dropdown đăng ký.
 
-### GET `/auth/me`
-Lấy thông tin user hiện tại.
+**Auth:** Không yêu cầu
 
-**Auth**: Cần đăng nhập
-
-**Response** `200`:
+**Response:**
 ```json
 {
-  "user_id": 5,
-  "email": "nva@gmail.com",
-  "full_name": "Nguyễn Văn A",
-  "employee_name_id": 1,
-  "department": "Phòng Kỹ thuật",
-  "role": "user",
-  "status": "approved"
+  "id": 1,
+  "fullName": "Trịnh Ngọc Tú",
+  "code": "TNT",
+  "workDepartmentName": "Phòng Kỹ thuật"
 }
 ```
 
 ---
 
-## 2. Employee Names — Danh sách tên nhân viên
+### 2.3 Đăng nhập
 
-### GET `/employee-names`
-Danh sách tên nhân viên active và chưa có user nào sử dụng — dùng cho dropdown đăng ký.
-
-**Auth**: Không cần
-
-**Response** `200`:
-```json
-[
-  { "id": 1, "employee_code": "NNC", "full_name": "Nguyễn Ngọc Cương" },
-  { "id": 2, "employee_code": "0083", "full_name": "Nguyễn Thành Vinh" },
-  { "id": 3, "employee_code": "", "full_name": "Trần Thị B" }
-]
+```
+POST /Account/Login
 ```
 
-**Lưu ý**:
-- Chỉ trả tên `is_active = 1` và chưa có user active (`is_deleted = 0`) nào dùng.
-- `employee_code` có thể rỗng `""` nếu admin chưa nhập mã NV.
-- Frontend nên hiển thị: `"NNC — Nguyễn Ngọc Cương"` hoặc chỉ `"Nguyễn Ngọc Cương"` nếu code rỗng.
+**Auth:** Không yêu cầu
 
----
+**Request Body** (form-data):
 
-### GET `/admin/employee-names`
-Danh sách nhân viên active — admin view.
+| Field | Type | Required | Mô tả |
+|---|---|---|---|
+| `UsernameOrEmailAddress` | string | ✅ | Email hoặc username |
+| `Password` | string | ✅ | Mật khẩu |
+| `RememberMe` | bool | ❌ | Ghi nhớ đăng nhập |
 
-**Auth**: Admin
-
-**Response** `200`:
-```json
-[
-  {
-    "id": 1,
-    "employee_code": "NNC",
-    "full_name": "Nguyễn Ngọc Cương",
-    "is_active": 1,
-    "department": "Phòng IT",
-    "email": "nnc@company.com",
-    "has_account": true,
-    "user_status": "approved",
-    "created_at": "2026-04-20T10:00:00"
-  }
-]
-```
-
-**Các giá trị `user_status`**: `"pending"`, `"approved"`, `"rejected"`, `"disabled"`, `""` (chưa có TK)
-
----
-
-### POST `/admin/employee-names`
-Thêm nhân viên mới. Nếu tên inactive đã tồn tại → kích hoạt lại thay vì tạo mới.
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{ "employee_code": "NVC", "full_name": "Nguyễn Văn C" }
-```
-*`employee_code` optional, phải unique nếu có giá trị.*
-
-**Response** `200`:
-```json
-{ "message": "Đã thêm 'NVC - Nguyễn Văn C'", "id": 3 }
-```
-
-**Lỗi**:
-- `400` — Mã NV đã tồn tại
-- `400` — Tên không được để trống
-
----
-
-### PUT `/admin/employee-names/{id}`
-Sửa thông tin nhân viên hoặc toggle active/inactive.
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{ "employee_code": "NVD", "full_name": "Nguyễn Văn D", "is_active": 0 }
-```
-*Tất cả fields optional.*
-
-**Response** `200`:
-```json
-{ "message": "Đã cập nhật 'Nguyễn Văn D'" }
-```
-
----
-
-### DELETE `/admin/employee-names/{id}`
-Soft-delete nhân viên. Nếu có tài khoản liên kết, yêu cầu `force=true`.
-
-**Auth**: Admin
-
-**Params**: `?force=true` (optional)
-
-**Flow**:
-1. Gọi không có `force` → nếu có account liên kết, trả `409` với thông tin
-2. Frontend hiện confirm → gọi lại với `?force=true`
-3. Soft-delete employee_name + soft-delete user liên kết
-
-**Response** `200`:
-```json
-{ "message": "Đã xóa 'Nguyễn Văn A' và vô hiệu 1 tài khoản liên kết" }
-```
-
-**Response** `409` (có account, chưa force):
+**Response:**
 ```json
 {
-  "detail": {
-    "message": "Nhân viên 'Nguyễn Văn A' đang có 1 tài khoản liên kết.",
-    "linked_emails": ["nva@gmail.com"],
-    "require_force": true
-  }
+  "targetUrl": "/App",
+  "result": 1
 }
 ```
 
+**Mã lỗi `result`:**
+| Giá trị | Mô tả |
+|---|---|
+| 1 | Thành công |
+| 2 | Tài khoản chưa kích hoạt |
+| 3 | Sai mật khẩu |
+| 4 | Tài khoản bị khóa |
+
 ---
 
-## 3. Route Registration — Đăng ký tuyến xe (User)
+### 2.4 Đăng xuất
 
-### GET `/registration/routes-available`
-Danh sách tuyến xe đang hoạt động.
-
-**Auth**: Cần đăng nhập
-
-**Response** `200`:
-```json
-[
-  {
-    "route_id": 1,
-    "route_code": "R001",
-    "route_name": "Hà Nội → Nam Định",
-    "go_time": "06:30 - 08:00",
-    "pickup_name": "Bến xe Giáp Bát",
-    "dropoff_name": "Bến xe Nam Định"
-  }
-]
+```
+GET /Account/Logout
 ```
 
+**Auth:** Yêu cầu đăng nhập
+
+**Response:** Redirect về trang Login
+
 ---
 
-### POST `/registration/register`
-Đăng ký tuyến xe cho ngày cụ thể.
+## 3. Quản lý xe buýt
 
-**Auth**: Cần đăng nhập
+> **Base path:** `/api/services/app/BusAtt/`  
+> **Auth:** Yêu cầu permission `BusAtt`
 
-**Request Body**:
+### 3.1 Điểm đón/trả (Location)
+
+#### Danh sách điểm đón/trả
+
+```
+GET /api/services/app/BusAtt/GetAllLocations
+```
+
+**Query params:**
+
+| Param | Type | Mô tả |
+|---|---|---|
+| `Filter` | string | Tìm theo tên |
+| `Sorting` | string | Sắp xếp (VD: `Name ASC`) |
+| `SkipCount` | int | Phân trang — bỏ qua N bản ghi |
+| `MaxResultCount` | int | Phân trang — số bản ghi tối đa |
+
+**Response:**
 ```json
 {
-  "route_id": 1,
-  "ride_date": "2026-04-25"
-}
-```
-
-**Response** `200`:
-```json
-{ "message": "Đã đăng ký tuyến Hà Nội → Nam Định cho ngày 2026-04-25" }
-```
-
-**Business rules**:
-- `ride_date` phải là ngày tương lai
-- Không đăng ký trùng tuyến + ngày
-- Không đăng ký 2 tuyến cùng giờ trong cùng ngày
-
----
-
-### GET `/registration/my`
-Danh sách đăng ký tuyến active trong tương lai của user hiện tại.
-
-**Auth**: Cần đăng nhập
-
-**Response** `200`:
-```json
-[
-  {
-    "registration_id": 12,
-    "route_id": 1,
-    "route_code": "R001",
-    "route_name": "Hà Nội → Nam Định",
-    "pickup_name": "Bến xe Giáp Bát",
-    "ride_date": "2026-04-25",
-    "status": "active",
-    "registered_at": "2026-04-23T10:30:00"
-  }
-]
-```
-
----
-
-### GET `/registration/my-dates`
-Danh sách ngày đã đăng ký tuyến (tương lai) — dùng cho calendar view.
-
-**Auth**: Cần đăng nhập
-
-**Response** `200`:
-```json
-{
-  "today": "2026-04-23",
-  "current_time": "10:30",
-  "is_within_hours": true,
-  "registrations": [
+  "totalCount": 5,
+  "items": [
     {
-      "ride_date": "2026-04-25",
-      "route_id": 1,
-      "route_name": "Hà Nội → Nam Định",
-      "route_code": "R001",
-      "registration_id": 12
+      "location": {
+        "id": 1,
+        "name": "Cổng chính KDT",
+        "lat": 20.969106,
+        "lng": 105.869754
+      }
     }
   ]
 }
 ```
 
----
+#### Tạo/Sửa điểm đón
 
-### POST `/registration/cancel/{registration_id}`
-Hủy đăng ký tuyến.
-
-**Auth**: Cần đăng nhập
-
-**Response** `200`:
-```json
-{ "message": "Đã hủy đăng ký tuyến" }
+```
+POST /api/services/app/BusAtt/CreateOrEditLocation
 ```
 
----
+**Permission:** `BusAtt.Location.Create` hoặc `BusAtt.Location.Edit`
 
-### GET `/registration/history`
-Lịch sử đăng ký tuyến (50 gần nhất).
-
-**Auth**: Cần đăng nhập
-
-**Response** `200`:
-```json
-[
-  {
-    "registration_id": 12,
-    "route_id": 1,
-    "route_code": "R001",
-    "route_name": "Hà Nội → Nam Định",
-    "pickup_name": "Bến xe Giáp Bát",
-    "ride_date": "2026-04-25",
-    "status": "active",
-    "registered_at": "2026-04-23T10:30:00"
-  }
-]
-```
-
----
-
-## 3. Attendance — Chấm công
-
-### GET `/qrcodes/validate/{qr_token}`
-Validate QR token, lấy thông tin xe. Gọi sau khi quét QR.
-
-**Auth**: Không cần
-
-**Response** `200`:
+**Request Body:**
 ```json
 {
-  "valid": true,
-  "bus_id": 1,
-  "bus_code": "BUS001",
-  "bus_name": "Xe số 1",
-  "license_plate": "29A-12345",
-  "route": {
-    "route_id": 1,
-    "route_code": "R001",
-    "route_name": "Hà Nội → Nam Định",
-    "go_start_time": "06:30",
-    "go_end_time": "08:00"
-  }
+  "id": null,
+  "name": "Cổng chính KDT",
+  "lat": 20.969106,
+  "lng": 105.869754
 }
 ```
 
+> `id = null` → tạo mới, `id = N` → cập nhật
+
+#### Xóa điểm đón
+
+```
+POST /api/services/app/BusAtt/DeleteLocation
+```
+
+**Permission:** `BusAtt.Location.Delete`
+
+**Request Body:**
+```json
+{ "id": 1 }
+```
+
+#### Dropdown điểm đón
+
+```
+GET /api/services/app/BusAtt/GetAllLocationDropDown?current={id}
+```
+
+**Response:** `[{ "value": "1", "text": "Cổng chính KDT", "selected": true }]`
+
 ---
 
-### POST `/attendance/upload-selfie`
-Upload ảnh selfie.
+### 3.2 Tuyến xe (Route)
 
-**Auth**: Cần đăng nhập
+#### Danh sách tuyến xe
 
-**Request**: `multipart/form-data`, field `file` (image JPG/PNG/WEBP, max 5MB)
+```
+GET /api/services/app/BusAtt/GetAllRoutes
+```
 
-**Response** `200`:
+**Query params:** `Filter`, `Sorting`, `SkipCount`, `MaxResultCount`
+
+**Response:**
 ```json
 {
-  "selfie_url": "/api/attendance/selfie-image/attendance-selfie/2026-04-23/abc123.jpg",
-  "filename": "abc123.jpg"
+  "totalCount": 3,
+  "items": [
+    {
+      "route": {
+        "id": 1,
+        "routeCode": "R001",
+        "routeName": "90 KDT - 47 PVD",
+        "goStartTime": "07:00",
+        "goEndTime": "07:30",
+        "pickupLocationId": 1,
+        "pickupLocationName": "Cổng chính KDT",
+        "dropoffLocationId": 2,
+        "dropoffLocationName": "47 Phạm Văn Đồng",
+        "status": "active"
+      }
+    }
+  ]
 }
 ```
 
----
+#### Tạo/Sửa tuyến xe
 
-### GET `/attendance/selfie-image/{path}`
-Serve ảnh selfie. **Không cần auth.**
+```
+POST /api/services/app/BusAtt/CreateOrEditRoute
+```
 
----
+**Permission:** `BusAtt.Route.Create` hoặc `BusAtt.Route.Edit`
 
-### POST `/attendance/submit`
-Gửi chấm công. User ID lấy từ JWT cookie.
-
-**Auth**: Cần đăng nhập
-
-**Request Body**:
+**Request Body:**
 ```json
 {
-  "qr_token": "hZAFavsEn-2PmibszhnLuH9rSjNnykUh_HRQ9CuAH3I",
-  "gps_lat": 21.0285,
-  "gps_lng": 105.8542,
-  "gps_accuracy": 15.0,
-  "selfie_url": "/api/attendance/selfie-image/attendance-selfie/2026-04-23/abc123.jpg"
+  "id": null,
+  "routeCode": "R001",
+  "routeName": "90 KDT - 47 PVD",
+  "goStartTime": "07:00",
+  "goEndTime": "07:30",
+  "pickupLocationId": 1,
+  "dropoffLocationId": 2,
+  "status": "active"
 }
 ```
 
-**Response thành công** `200`:
+#### Xóa tuyến xe
+
+```
+POST /api/services/app/BusAtt/DeleteRoute
+```
+
+**Request Body:** `{ "id": 1 }`
+
+---
+
+### 3.3 Xe buýt (Bus)
+
+#### Danh sách xe
+
+```
+GET /api/services/app/BusAtt/GetAllBuses
+```
+
+**Query params:** `Filter`, `Sorting`, `SkipCount`, `MaxResultCount`
+
+> **Lưu ý:** Tài xế chỉ thấy xe được gán cho mình. Admin thấy tất cả.
+
+**Response:**
+```json
+{
+  "totalCount": 2,
+  "items": [
+    {
+      "bus": {
+        "id": 1,
+        "busCode": "BUS001",
+        "busName": "Xe 45 chỗ",
+        "licensePlate": "80A-06537",
+        "employeeId": 5,
+        "driverName": "Nguyễn Văn Tài",
+        "status": "active",
+        "activeRouteId": 1,
+        "activeRouteName": "90 KDT - 47 PVD"
+      }
+    }
+  ]
+}
+```
+
+#### Tạo/Sửa xe
+
+```
+POST /api/services/app/BusAtt/CreateOrEditBus
+```
+
+**Permission:** `BusAtt.Bus.Create` hoặc `BusAtt.Bus.Edit`
+
+**Request Body:**
+```json
+{
+  "id": null,
+  "busCode": "BUS001",
+  "busName": "Xe 45 chỗ",
+  "licensePlate": "80A-06537",
+  "employeeId": 5,
+  "status": "active"
+}
+```
+
+#### Xóa xe
+
+```
+POST /api/services/app/BusAtt/DeleteBus
+```
+
+**Request Body:** `{ "id": 1 }`
+
+---
+
+### 3.4 Mã QR (QR Code)
+
+#### Tạo mã QR cho xe
+
+```
+POST /api/services/app/BusAtt/GenerateQRCode?busId={id}
+```
+
+**Permission:** `BusAtt.QRCode.Create`
+
+**Response:**
+```json
+{
+  "qrId": 1,
+  "qrToken": "abc123def456...",
+  "qrImageUrl": "/uploads/qrcodes/BUS001_abc123.png"
+}
+```
+
+#### Cấp lại mã QR
+
+```
+POST /api/services/app/BusAtt/ReissueQRCode?busId={id}
+```
+
+**Permission:** `BusAtt.QRCode.Create`
+
+> Vô hiệu mã QR cũ, tạo mã mới.
+
+#### Xem mã QR đang hoạt động
+
+```
+GET /api/services/app/BusAtt/GetActiveQRCode?busId={id}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "busId": 1,
+  "qrToken": "abc123...",
+  "qrImageUrl": "/uploads/qrcodes/BUS001_abc123.png",
+  "isActive": true,
+  "createdAt": "2026-04-20T10:00:00"
+}
+```
+
+#### Lịch sử mã QR
+
+```
+GET /api/services/app/BusAtt/GetQRCodeHistory?busId={id}
+```
+
+**Response:** `List<BusQRCodeDto>`
+
+---
+
+### 3.5 Gán tuyến cho xe
+
+#### Gán tuyến
+
+```
+POST /api/services/app/BusAtt/AssignRouteToBus?busId={busId}&routeId={routeId}
+```
+
+**Permission:** `BusAtt.Bus.Edit`
+
+#### Bỏ gán tuyến
+
+```
+POST /api/services/app/BusAtt/UnassignRouteFromBus?busId={busId}
+```
+
+**Permission:** `BusAtt.Bus.Edit`
+
+---
+
+## 4. Đăng ký tuyến xe
+
+#### Danh sách đăng ký
+
+```
+GET /api/services/app/BusAtt/GetAllRegistrations
+```
+
+**Query params:**
+
+| Param | Type | Mô tả |
+|---|---|---|
+| `RideDate` | DateTime? | Lọc theo ngày đi |
+| `Filter` | string | Tìm kiếm |
+| `Sorting` | string | Sắp xếp |
+| `SkipCount` | int | Phân trang |
+| `MaxResultCount` | int | Phân trang |
+
+> User thường chỉ thấy đăng ký của mình. Admin thấy tất cả.
+
+#### Tạo/Sửa đăng ký
+
+```
+POST /api/services/app/BusAtt/CreateOrEditRegistration
+```
+
+**Request Body:**
+```json
+{
+  "id": null,
+  "userId": 10,
+  "routeId": 1,
+  "rideDate": "2026-05-05",
+  "status": "active"
+}
+```
+
+**Validation:**
+- `rideDate` phải là ngày trong tương lai
+- Không được trùng (cùng user + route + date)
+
+#### Đăng ký hàng loạt
+
+```
+POST /api/services/app/BusAtt/BatchRegister
+```
+
+**Request Body:**
+```json
+{
+  "userId": 10,
+  "routeId": 1,
+  "batchType": 1,
+  "note": ""
+}
+```
+
+| `batchType` | Mô tả |
+|---|---|
+| 1 | Đăng ký cả tuần (thứ 2 → thứ 6) |
+| 2 | Đăng ký cả tháng |
+
+**Response:**
+```json
+{
+  "totalDays": 22,
+  "createdCount": 20,
+  "skippedCount": 2,
+  "createdDates": ["2026-05-05", "2026-05-06", ...],
+  "skippedReasons": ["2026-05-01: Ngày nghỉ", ...]
+}
+```
+
+#### Hủy đăng ký
+
+```
+POST /api/services/app/BusAtt/CancelRegistration
+```
+
+**Request Body:** `{ "id": 1 }`
+
+---
+
+## 5. Chấm công
+
+#### Xác thực mã QR
+
+```
+POST /api/services/app/BusAtt/ValidateQRToken?token={qrToken}
+```
+
+**Auth:** Không yêu cầu (public — dùng cho mobile)
+
+**Response:**
+```json
+{
+  "busId": 1,
+  "busCode": "BUS001",
+  "busName": "Xe 45 chỗ",
+  "licensePlate": "80A-06537",
+  "routeId": 1,
+  "routeCode": "R001",
+  "routeName": "90 KDT - 47 PVD",
+  "goStartTime": "07:00",
+  "goEndTime": "07:30",
+  "pickupLocationName": "Cổng chính KDT",
+  "pickupLat": 20.969106,
+  "pickupLng": 105.869754,
+  "gpsThresholdMeter": 150,
+  "requireGps": true,
+  "requireSelfie": true
+}
+```
+
+#### Gửi chấm công
+
+```
+POST /api/services/app/BusAtt/SubmitAttendance
+```
+
+**Auth:** Yêu cầu đăng nhập
+
+**Request Body:**
+```json
+{
+  "qrToken": "abc123...",
+  "gpsLat": 20.969106,
+  "gpsLng": 105.869754,
+  "gpsAccuracy": 13.5,
+  "selfieUrl": "/uploads/selfies/2026-05-04/abc.jpg"
+}
+```
+
+**Response (thành công):**
 ```json
 {
   "result": "success",
   "message": "Chấm công thành công!",
-  "data": {
-    "employee": "Nguyễn Văn A",
-    "bus": "BUS001",
-    "route": "Hà Nội → Nam Định",
-    "time": "07:15:30",
-    "date": "2026-04-23",
-    "distance_m": 45
-  }
+  "employee": "Trịnh Ngọc Tú",
+  "busCode": "BUS001",
+  "routeName": "90 KDT - 47 PVD",
+  "checkinTime": "07:15:30",
+  "date": "2026-05-04",
+  "distanceM": 45
 }
 ```
 
-**Response từ chối** `200`:
+**Response (từ chối):**
 ```json
 {
   "result": "rejected",
-  "message": "Ngoài giờ chấm công (06:30 → 08:00). Giờ hiện tại: 09:15"
+  "message": "Quá xa điểm đón (2300m > 150m)"
 }
 ```
 
-**Validation chain** (server kiểm tra theo thứ tự):
-1. QR token hợp lệ + active
-2. Xe đang hoạt động
-3. Xe có tuyến active
-4. Giờ hiện tại trong khung giờ tuyến
-5. Chưa chấm công hôm nay (cùng user + ngày + tuyến)
-6. GPS gần điểm đón (≤ threshold, mặc định 150m)
+**Các lý do từ chối:**
+| Lý do | Mô tả |
+|---|---|
+| QR không hợp lệ | Token sai hoặc đã bị vô hiệu |
+| Xe không hoạt động | Xe đã bị disable |
+| Xe chưa gán tuyến | Chưa có BusRouteAssignment active |
+| Ngoài giờ chấm công | Thời gian hiện tại ngoài `goStartTime → goEndTime` |
+| Đã chấm công hôm nay | Trùng user + route + date |
+| Quá xa điểm đón | Khoảng cách GPS > threshold |
 
----
+#### Upload selfie
 
-## 4. Meals — Đăng ký suất ăn (User)
-
-### POST `/meals/register`
-Đăng ký suất ăn cho ngày cụ thể.
-
-**Auth**: Cần đăng nhập
-
-**Request Body**:
-```json
-{ "meal_date": "2026-04-25" }
+```
+POST /api/services/app/BusAtt/UploadSelfie
 ```
 
-**Response** `200`:
+**Auth:** Yêu cầu đăng nhập
+
+**Request:** `multipart/form-data` với file ảnh (JPG/PNG/WEBP, tối đa 5MB)
+
+**Response:**
 ```json
 {
-  "message": "Đã đăng ký suất ăn cho ngày 2026-04-25",
-  "registration_id": 8,
-  "meal_date": "2026-04-25"
+  "selfieUrl": "/uploads/selfies/2026-05-04/abc123.jpg"
 }
 ```
 
-**Business rules**:
-- Khung giờ: 8:00 → 19:00 (UTC+7)
-- Deadline: trước 19:00 ngày hôm trước
-- 1 user chỉ đăng ký 1 lần/ngày
+#### Lịch sử chấm công
+
+```
+GET /api/services/app/BusAtt/GetAllAttendanceLogs
+```
+
+**Permission:** `BusAtt.Attendance`
+
+**Query params:** `AttendanceDate`, `Filter`, `Sorting`, `SkipCount`, `MaxResultCount`
 
 ---
 
-### POST `/meals/cancel`
-Hủy đăng ký suất ăn.
+## 6. Quản lý suất ăn
 
-**Auth**: Cần đăng nhập
+> **Base path:** `/api/services/app/Meals/`  
+> **Auth:** Yêu cầu permission `Meal`
 
-**Request Body**:
-```json
-{ "meal_date": "2026-04-25" }
+#### Danh sách đăng ký suất ăn
+
+```
+GET /api/services/app/Meals/GetAllMealRegistrations
 ```
 
-**Response** `200`:
-```json
-{ "message": "Đã hủy đăng ký suất ăn ngày 2026-04-25" }
-```
+**Query params:**
 
----
+| Param | Type | Mô tả |
+|---|---|---|
+| `MealDate` | DateTime? | Lọc theo ngày |
+| `Filter` | string | Tìm kiếm |
+| `Sorting` | string | Sắp xếp |
+| `SkipCount` | int | Phân trang |
+| `MaxResultCount` | int | Phân trang |
 
-### GET `/meals/my-dates`
-Danh sách ngày đã đăng ký suất ăn (tương lai).
+> **Kitchen/View** thấy tất cả. **Register** chỉ thấy của mình.
 
-**Auth**: Cần đăng nhập
-
-**Response** `200`:
+**Response:**
 ```json
 {
-  "today": "2026-04-23",
-  "current_time": "10:30",
-  "open_time": "8:00",
-  "cutoff_time": "19:00",
-  "is_within_hours": true,
-  "registered_dates": ["2026-04-24", "2026-04-25"]
-}
-```
-
----
-
-### GET `/meals/my-history`
-Lịch sử đăng ký suất ăn (50 gần nhất).
-
-**Auth**: Cần đăng nhập
-
-**Response** `200`:
-```json
-[
-  {
-    "registration_id": 8,
-    "meal_date": "2026-04-25",
-    "status": "registered",
-    "created_at": "2026-04-23T10:30:00+07:00"
-  }
-]
-```
-
----
-
-## 5. Admin — Quản lý tài khoản
-
-### GET `/admin/users`
-Danh sách tất cả user.
-
-**Auth**: Admin
-
-**Query params**: `status` (optional: pending/approved/rejected/disabled)
-
-**Response** `200`:
-```json
-[
-  {
-    "user_id": 5,
-    "email": "nva@gmail.com",
-    "full_name": "Nguyễn Văn A",
-    "employee_name_id": 1,
-    "department": "Phòng Kỹ thuật",
-    "role": "user",
-    "status": "approved",
-    "created_at": "2026-04-20T10:00:00"
-  }
-]
-```
-
----
-
-### GET `/admin/users/pending`
-Danh sách tài khoản chờ duyệt.
-
-**Auth**: Admin
-
-**Response**: Giống `/admin/users` nhưng chỉ status=pending.
-
----
-
-### POST `/admin/users/{user_id}/approve`
-Duyệt tài khoản.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã duyệt tài khoản Nguyễn Văn A" }
-```
-
----
-
-### POST `/admin/users/{user_id}/reject`
-Từ chối tài khoản.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã từ chối tài khoản Nguyễn Văn A" }
-```
-
----
-
-### POST `/admin/users/{user_id}/disable`
-Vô hiệu tài khoản. Không thể vô hiệu chính mình hoặc admin khác. **Tự động thu hồi tất cả refresh token** của user.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã vô hiệu tài khoản Nguyễn Văn A" }
-```
-
----
-
-### POST `/admin/users/{user_id}/revoke-sessions`
-Thu hồi tất cả phiên đăng nhập (refresh token) của user. User sẽ phải đăng nhập lại trên tất cả thiết bị.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{
-  "message": "Đã thu hồi 3 phiên của Nguyễn Văn A",
-  "revoked_count": 3
-}
-```
-
-**Lỗi**:
-- `404` — User không tồn tại
-
----
-
-### POST `/admin/users/{user_id}/enable`
-Kích hoạt lại tài khoản (disabled/rejected → approved).
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã kích hoạt lại tài khoản Nguyễn Văn A" }
-```
-
----
-
-### POST `/admin/users`
-Admin tạo tài khoản trực tiếp (auto-approved).
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "email": "nva@gmail.com",
-  "password": "matkhau123",
-  "employee_name_id": 1,
-  "department": "Phòng Kỹ thuật",
-  "role_name": "user"
-}
-```
-*Bắt buộc: email, password, employee_name_id. `department` mặc định "", `role_name` mặc định "user".*
-
-**Response** `200`:
-```json
-{ "message": "Đã tạo tài khoản Nguyễn Văn A", "user_id": 5 }
-```
-
----
-
-### PUT `/admin/users/{user_id}`
-Cập nhật thông tin user.
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "employee_name_id": 2,
-  "department": "Phòng Hành chính"
-}
-```
-*Tất cả fields optional.*
-
-**Response** `200`:
-```json
-{ "message": "Đã cập nhật Nguyễn Văn B" }
-```
-
----
-
-### DELETE `/admin/users/{user_id}`
-Xóa user (soft delete). Không thể xóa admin hoặc chính mình. Email được append `__del_{timestamp}`.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã xóa Nguyễn Văn A" }
-```
-
----
-
-## 6. Admin — Quản lý xe bus
-
-### GET `/buses`
-Danh sách xe bus.
-
-**Auth**: Admin
-
-**Query params**: `status` (optional: active/inactive)
-
-**Response** `200`:
-```json
-[
-  {
-    "bus_id": 1,
-    "bus_code": "BUS001",
-    "bus_name": "Xe số 1",
-    "license_plate": "29A-12345",
-    "driver_id": 2,
-    "driver_name": "Trần Văn B",
-    "status": "active",
-    "has_active_route": true,
-    "active_route_id": 1,
-    "route_name": "Hà Nội → Nam Định",
-    "has_qr": true,
-    "qr_id": 5,
-    "qr_image_url": "/api/qrcodes/image/qr/2026-04-21/BUS001_abc.png",
-    "created_at": "2026-04-20T10:00:00"
-  }
-]
-```
-
----
-
-### GET `/buses/{bus_id}`
-Lấy thông tin chi tiết 1 xe.
-
-**Auth**: Admin
-
-**Response** `200`: Giống 1 item trong danh sách `/buses`.
-
----
-
-### POST `/buses`
-Tạo xe mới (auto gen mã BUS001, BUS002...).
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "bus_name": "Xe số 1",
-  "license_plate": "29A-12345",
-  "driver_id": null
-}
-```
-
-**Response** `200`:
-```json
-{ "message": "Đã tạo xe 'BUS001'", "bus_id": 1, "bus_code": "BUS001" }
-```
-
----
-
-### PUT `/buses/{bus_id}`
-Cập nhật thông tin xe.
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "bus_name": "Xe số 1 (mới)",
-  "license_plate": "29A-99999",
-  "driver_id": 3,
-  "status": "active"
-}
-```
-*Tất cả fields optional. `status` chỉ nhận "active" hoặc "inactive".*
-
-**Response** `200`:
-```json
-{ "message": "Đã cập nhật xe 'BUS001'" }
-```
-
----
-
-### POST `/buses/{bus_id}/toggle-status`
-Chuyển đổi trạng thái xe (active ↔ inactive).
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Xe 'BUS001' → inactive", "status": "inactive" }
-```
-
----
-
-### DELETE `/buses/{bus_id}`
-Xóa xe (soft delete). `bus_code` được append `__del_{timestamp}`.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã xóa xe" }
-```
-
----
-
-### POST `/buses/{bus_id}/assign-route`
-Gán tuyến cho xe (1 xe chỉ 1 tuyến active). Nếu xe đã có tuyến, trả lỗi.
-
-**Auth**: Admin
-
-**Request Body**: `{ "route_id": 1 }`
-
-**Response** `200`:
-```json
-{ "message": "Đã gán xe 'BUS001' vào tuyến 'Hà Nội → Nam Định'" }
-```
-
----
-
-### POST `/buses/{bus_id}/change-route`
-Đổi tuyến (atomic: hủy cũ → gán mới). Xe phải đang có tuyến.
-
-**Auth**: Admin
-
-**Request Body**: `{ "route_id": 2 }`
-
-**Response** `200`:
-```json
-{
-  "message": "Đã đổi tuyến xe 'BUS001': 'Hà Nội → Nam Định' → 'Hà Nội → Hải Phòng'",
-  "old_route": "Hà Nội → Nam Định",
-  "new_route": "Hà Nội → Hải Phòng"
-}
-```
-
----
-
-### POST `/buses/{bus_id}/unassign-route`
-Hủy gán tuyến cho xe.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã hủy gán tuyến cho xe 'BUS001'" }
-```
-
----
-
-### GET `/buses/{bus_id}/route-history`
-Lịch sử gán tuyến của xe.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-[
-  {
-    "assignment_id": 1,
-    "route_id": 1,
-    "route_name": "Hà Nội → Nam Định",
-    "status": "inactive",
-    "assigned_at": "2026-04-20T10:00:00",
-    "unassigned_at": "2026-04-22T15:30:00"
-  },
-  {
-    "assignment_id": 2,
-    "route_id": 2,
-    "route_name": "Hà Nội → Hải Phòng",
-    "status": "active",
-    "assigned_at": "2026-04-22T15:30:00",
-    "unassigned_at": ""
-  }
-]
-```
-
----
-
-### POST `/buses/{bus_id}/assign-driver`
-Gán tài xế (1 driver chỉ 1 xe active).
-
-**Auth**: Admin
-
-**Request Body**: `{ "driver_id": 3 }`
-
-**Response** `200`:
-```json
-{ "message": "Đã gán tài xế 'Trần Văn B' cho xe 'BUS001'" }
-```
-
----
-
-### POST `/buses/{bus_id}/unassign-driver`
-Hủy gán tài xế khỏi xe.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã hủy gán tài xế 'Trần Văn B' khỏi xe 'BUS001'" }
-```
-
----
-
-## 7. Admin — Quản lý tài xế (Drivers)
-
-### GET `/drivers`
-Danh sách tài xế.
-
-**Auth**: Admin
-
-**Query params**: `status` (optional: active/inactive)
-
-**Response** `200`:
-```json
-[
-  {
-    "driver_id": 1,
-    "full_name": "Trần Văn B",
-    "phone": "0912345678",
-    "license_number": "B2-123456",
-    "status": "active",
-    "assigned_bus_code": "BUS001",
-    "created_at": "2026-04-20T10:00:00"
-  }
-]
-```
-
----
-
-### POST `/drivers`
-Tạo tài xế mới.
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "full_name": "Trần Văn B",
-  "phone": "0912345678",
-  "license_number": "B2-123456"
-}
-```
-*Bắt buộc: full_name. `phone` và `license_number` mặc định "".*
-
-**Response** `200`:
-```json
-{ "message": "Đã tạo tài xế 'Trần Văn B'", "driver_id": 1 }
-```
-
----
-
-### PUT `/drivers/{driver_id}`
-Cập nhật thông tin tài xế.
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "full_name": "Trần Văn C",
-  "phone": "0999888777",
-  "license_number": "B2-654321",
-  "status": "inactive"
-}
-```
-*Tất cả fields optional. `status` chỉ nhận "active" hoặc "inactive".*
-
-**Response** `200`:
-```json
-{ "message": "Đã cập nhật tài xế 'Trần Văn C'" }
-```
-
----
-
-### DELETE `/drivers/{driver_id}`
-Xóa tài xế (soft delete). Set `is_deleted=1`, `status=inactive`.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã xóa tài xế 'Trần Văn B'" }
-```
-
----
-
-## 8. Admin — Quản lý tuyến xe (Routes)
-
-### GET `/routes`
-Danh sách tuyến xe (không bao gồm đã xóa).
-
-**Auth**: Không cần (public)
-
-**Response** `200`:
-```json
-[
-  {
-    "route_id": 1,
-    "route_code": "R001",
-    "route_name": "Hà Nội → Nam Định",
-    "go_start_time": "06:30",
-    "go_end_time": "08:00",
-    "pickup_location_id": 1,
-    "pickup_name": "Bến xe Giáp Bát",
-    "dropoff_location_id": 2,
-    "dropoff_name": "Bến xe Nam Định",
-    "status": "active"
-  }
-]
-```
-
----
-
-### GET `/routes/{route_id}`
-Chi tiết 1 tuyến.
-
-**Auth**: Không cần (public)
-
-**Response** `200`: Giống 1 item trong danh sách `/routes`.
-
----
-
-### POST `/routes`
-Tạo tuyến mới (auto gen mã R001, R002...).
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "route_name": "Hà Nội → Nam Định",
-  "go_start_time": "06:30",
-  "go_end_time": "08:00",
-  "pickup_location_id": 1,
-  "dropoff_location_id": 2
-}
-```
-*Bắt buộc: route_name, go_start_time, go_end_time. Location IDs optional.*
-
-**Response** `200`:
-```json
-{ "message": "Đã tạo tuyến 'Hà Nội → Nam Định'", "route_id": 1 }
-```
-
----
-
-### PUT `/routes/{route_id}`
-Cập nhật tuyến.
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "route_name": "Hà Nội → Hải Phòng",
-  "go_start_time": "07:00",
-  "go_end_time": "09:00",
-  "pickup_location_id": 1,
-  "dropoff_location_id": 3,
-  "status": "inactive"
-}
-```
-*Tất cả fields optional.*
-
-**Response** `200`:
-```json
-{ "message": "Đã cập nhật tuyến 'Hà Nội → Hải Phòng'" }
-```
-
----
-
-### DELETE `/routes/{route_id}`
-Xóa tuyến (soft delete). `route_code` được append `__del_{timestamp}`, status → inactive.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã xóa tuyến 'Hà Nội → Nam Định'" }
-```
-
----
-
-## 9. Admin — Quản lý điểm đón/trả (Locations)
-
-### GET `/locations`
-Danh sách điểm đón/trả (không bao gồm đã xóa).
-
-**Auth**: Không cần (public)
-
-**Response** `200`:
-```json
-[
-  {
-    "location_id": 1,
-    "name": "Bến xe Giáp Bát",
-    "lat": 20.9818,
-    "lng": 105.8413
-  }
-]
-```
-
----
-
-### POST `/locations`
-Tạo điểm đón/trả mới.
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "name": "Bến xe Giáp Bát",
-  "lat": 20.9818,
-  "lng": 105.8413
-}
-```
-
-**Response** `200`:
-```json
-{ "message": "Đã tạo điểm 'Bến xe Giáp Bát'", "location_id": 1 }
-```
-
----
-
-### PUT `/locations/{location_id}`
-Cập nhật điểm đón/trả.
-
-**Auth**: Admin
-
-**Request Body**:
-```json
-{
-  "name": "Bến xe Giáp Bát (mới)",
-  "lat": 20.9820,
-  "lng": 105.8415
-}
-```
-*Tất cả fields optional.*
-
-**Response** `200`:
-```json
-{ "message": "Đã cập nhật 'Bến xe Giáp Bát (mới)'" }
-```
-
----
-
-### DELETE `/locations/{location_id}`
-Xóa điểm đón/trả (soft delete). Set `is_deleted=1`.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{ "message": "Đã xóa 'Bến xe Giáp Bát'" }
-```
-
----
-
-## 10. Admin — QR Codes
-
-### POST `/qrcodes/generate/{bus_id}`
-Tạo QR mới cho xe. Nếu xe đã có QR active, trả lỗi (dùng reissue thay thế).
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{
-  "message": "Đã tạo QR cho xe 'BUS001'",
-  "qr_id": 5,
-  "qr_token": "hZAFavsEn-2Pmibsz...",
-  "qr_image_url": "/api/qrcodes/image/qr/2026-04-23/BUS001_hZAFavsE.png"
-}
-```
-
----
-
-### POST `/qrcodes/reissue/{bus_id}`
-Cấp lại QR (vô hiệu cũ, tạo mới). Xe phải đang có QR active.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{
-  "message": "Đã cấp lại QR cho xe 'BUS001'. QR cũ đã bị vô hiệu.",
-  "qr_id": 6,
-  "qr_token": "newToken123...",
-  "qr_image_url": "/api/qrcodes/image/qr/2026-04-23/BUS001_newToken.png"
-}
-```
-
----
-
-### GET `/qrcodes/bus/{bus_id}`
-Lấy thông tin QR active của xe.
-
-**Auth**: Admin
-
-**Response** `200` (có QR):
-```json
-{
-  "has_qr": true,
-  "bus_code": "BUS001",
-  "qr_id": 5,
-  "qr_token": "hZAFavsEn-2Pmibsz...",
-  "qr_image_url": "/api/qrcodes/image/qr/2026-04-23/BUS001_hZAFavsE.png",
-  "created_at": "2026-04-23T10:00:00"
-}
-```
-
-**Response** `200` (chưa có QR):
-```json
-{
-  "has_qr": false,
-  "bus_code": "BUS001"
-}
-```
-
----
-
-### GET `/qrcodes/bus/{bus_id}/history`
-Lịch sử QR của xe (active + đã vô hiệu).
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-[
-  {
-    "qr_id": 6,
-    "qr_token": "newToken123...",
-    "is_active": true,
-    "qr_image_url": "/api/qrcodes/image/qr/2026-04-23/BUS001_newToken.png",
-    "created_at": "2026-04-23T15:00:00",
-    "deactivated_at": ""
-  },
-  {
-    "qr_id": 5,
-    "qr_token": "hZAFavsEn-2P...",
-    "is_active": false,
-    "qr_image_url": "/api/qrcodes/image/qr/2026-04-21/BUS001_hZAFavsE.png",
-    "created_at": "2026-04-21T10:00:00",
-    "deactivated_at": "2026-04-23T15:00:00"
-  }
-]
-```
-
----
-
-### GET `/qrcodes/image/{path}`
-Serve ảnh QR. **Không cần auth.**
-
----
-
-### GET `/qrcodes/download/{qr_id}`
-Download ảnh QR. **Không cần auth.**
-
----
-
-## 11. Admin — Báo cáo
-
-### GET `/reports/dashboard`
-Dashboard tổng quan.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{
-  "buses": { "total": 5, "active": 4 },
-  "qr_active": 4,
-  "drivers": { "total": 3, "active": 3 },
-  "users_approved": 20,
-  "today": {
-    "date": "2026-04-23",
-    "total": 15,
-    "success": 12,
-    "rejected": 3
-  },
-  "recent_logs": [
+  "totalCount": 15,
+  "items": [
     {
-      "log_id": 100,
-      "full_name": "Nguyễn Văn A",
-      "email": "nva@gmail.com",
-      "bus_code": "BUS001",
-      "checkin_time": "07:15",
-      "attendance_date": "2026-04-23",
-      "result_status": "success"
+      "mealRegistration": {
+        "id": 1,
+        "userId": 10,
+        "fullName": "Trịnh Ngọc Tú",
+        "email": "tu@company.com",
+        "department": "Phòng Kỹ thuật",
+        "mealDate": "2026-05-05",
+        "quantity": 1,
+        "note": "",
+        "status": "registered",
+        "createdAt": "2026-05-04T08:30:00"
+      }
     }
   ]
 }
 ```
 
----
+#### Đăng ký suất ăn
 
-### GET `/reports/daily?report_date=2026-04-23`
-Báo cáo chấm công theo ngày, nhóm theo xe.
+```
+POST /api/services/app/Meals/CreateOrEditMealRegistration
+```
 
-**Auth**: Admin
-
-**Query params**: `report_date` (optional, YYYY-MM-DD, mặc định hôm nay)
-
-**Response** `200`:
+**Request Body:**
 ```json
 {
-  "date": "2026-04-23",
-  "summary": {
-    "total": 15,
-    "success": 12,
-    "rejected": 3
-  },
-  "by_bus": [
-    {
-      "bus_id": 1,
-      "bus_code": "BUS001",
-      "bus_name": "Xe số 1",
-      "success": 8,
-      "rejected": 1,
-      "total": 9,
-      "logs": [
-        {
-          "log_id": 100,
-          "user_id": 5,
-          "full_name": "Nguyễn Văn A",
-          "email": "nva@gmail.com",
-          "department": "Phòng Kỹ thuật",
-          "bus_code": "BUS001",
-          "route_name": "Hà Nội → Nam Định",
-          "attendance_date": "2026-04-23",
-          "checkin_time": "07:15:30",
-          "gps_lat": 21.0285,
-          "gps_lng": 105.8542,
-          "distance_m": 45,
-          "selfie_url": "/api/attendance/selfie-image/...",
-          "result_status": "success",
-          "reject_reason": ""
-        }
-      ]
-    }
-  ]
+  "id": null,
+  "userId": 10,
+  "mealDate": "2026-05-05",
+  "quantity": 1,
+  "note": "Không cay",
+  "status": "registered"
+}
+```
+
+**Validation:**
+- Chỉ đăng ký trong khung giờ **8h → 19h**
+- `mealDate` phải là ngày trong tương lai
+- Không được trùng (cùng user + date)
+
+#### Đăng ký suất ăn hàng loạt
+
+```
+POST /api/services/app/Meals/BatchMealRegister
+```
+
+**Request Body:**
+```json
+{
+  "userId": 10,
+  "batchType": 1,
+  "note": ""
+}
+```
+
+| `batchType` | Mô tả |
+|---|---|
+| 1 | Đăng ký cả tuần |
+| 2 | Đăng ký cả tháng |
+
+**Response:**
+```json
+{
+  "totalDays": 22,
+  "createdCount": 20,
+  "skippedCount": 2,
+  "createdDates": ["2026-05-05", ...],
+  "skippedReasons": ["2026-05-01: Ngày nghỉ"]
+}
+```
+
+> Tự bỏ qua các ngày trong `SystemConfig.MealExcludedDays`
+
+#### Hủy đăng ký suất ăn
+
+```
+POST /api/services/app/Meals/CancelMealRegistration
+```
+
+**Request Body:** `{ "id": 1 }`
+
+#### Xóa đăng ký suất ăn
+
+```
+POST /api/services/app/Meals/DeleteMealRegistration
+```
+
+**Permission:** `Meal.MealRegistration.Delete`
+
+**Request Body:** `{ "id": 1 }`
+
+---
+
+## 7. Yêu cầu xe đột xuất
+
+#### Tạo yêu cầu
+
+```
+POST /api/services/app/BusAtt/CreateUrgentRequest
+```
+
+**Request Body:**
+```json
+{
+  "requestedDate": "2026-05-10",
+  "requestedTime": "14:00",
+  "reason": "Họp đối tác tại chi nhánh 2"
+}
+```
+
+> Tự động gửi thông báo tới tất cả Bus_Admin.
+
+#### Danh sách yêu cầu
+
+```
+GET /api/services/app/BusAtt/GetAllUrgentRequests
+```
+
+**Query params:** `StatusFilter`, `FromDate`, `ToDate`, `Sorting`, `SkipCount`, `MaxResultCount`
+
+> Bus_Admin thấy tất cả. User thường chỉ thấy yêu cầu của mình.
+
+#### Duyệt yêu cầu
+
+```
+POST /api/services/app/BusAtt/ApproveUrgentRequest
+```
+
+**Permission:** Bus_Admin
+
+**Request Body:**
+```json
+{
+  "requestId": 1,
+  "busId": 2
+}
+```
+
+#### Từ chối yêu cầu
+
+```
+POST /api/services/app/BusAtt/RejectUrgentRequest
+```
+
+**Permission:** Bus_Admin
+
+**Request Body:**
+```json
+{
+  "requestId": 1,
+  "rejectionReason": "Không có xe trống"
 }
 ```
 
 ---
 
-### GET `/reports/by-bus/{bus_id}?report_date=2026-04-23`
-Báo cáo chấm công cho 1 xe cụ thể theo ngày.
+## 8. Cấu hình hệ thống
 
-**Auth**: Admin
+#### Xem cấu hình
 
-**Query params**: `report_date` (optional, YYYY-MM-DD, mặc định hôm nay)
+```
+GET /api/services/app/BusAtt/GetSystemConfig
+```
 
-**Response** `200`:
+**Permission:** `BusAtt.SystemConfig`
+
+**Response:**
 ```json
 {
-  "date": "2026-04-23",
-  "bus_code": "BUS001",
-  "bus_name": "Xe số 1",
-  "total": 9,
-  "success": 8,
-  "rejected": 1,
-  "logs": [
-    {
-      "log_id": 100,
-      "user_id": 5,
-      "full_name": "Nguyễn Văn A",
-      "email": "nva@gmail.com",
-      "department": "Phòng Kỹ thuật",
-      "bus_code": "BUS001",
-      "route_name": "Hà Nội → Nam Định",
-      "attendance_date": "2026-04-23",
-      "checkin_time": "07:15:30",
-      "gps_lat": 21.0285,
-      "gps_lng": 105.8542,
-      "distance_m": 45,
-      "selfie_url": "",
-      "result_status": "success",
-      "reject_reason": ""
-    }
-  ]
+  "nearStopThresholdMeter": 150,
+  "requireGPS": true,
+  "requireSelfie": true,
+  "busExcludedDays": "0,6",
+  "mealExcludedDays": "0,6"
 }
 ```
 
----
+| Field | Mô tả |
+|---|---|
+| `nearStopThresholdMeter` | Khoảng cách tối đa tới điểm đón (mét) |
+| `requireGPS` | Bắt buộc GPS khi chấm công |
+| `requireSelfie` | Bắt buộc selfie khi chấm công |
+| `busExcludedDays` | Ngày nghỉ xe (0=CN, 6=T7) |
+| `mealExcludedDays` | Ngày nghỉ suất ăn |
 
-### GET `/reports/by-employee/{user_id}?date_from=2026-04-01&date_to=2026-04-30`
-Lịch sử chấm công của 1 nhân viên (chỉ lấy success).
+#### Lưu cấu hình
 
-**Auth**: Admin
-
-**Query params**:
-- `date_from` (optional, YYYY-MM-DD)
-- `date_to` (optional, YYYY-MM-DD)
-
-**Response** `200`:
-```json
-{
-  "user_id": 5,
-  "full_name": "Nguyễn Văn A",
-  "email": "nva@gmail.com",
-  "total_logs": 15,
-  "unique_days": 12,
-  "logs": [
-    {
-      "log_id": 100,
-      "user_id": 5,
-      "full_name": "Nguyễn Văn A",
-      "email": "nva@gmail.com",
-      "department": "Phòng Kỹ thuật",
-      "bus_code": "BUS001",
-      "route_name": "Hà Nội → Nam Định",
-      "attendance_date": "2026-04-23",
-      "checkin_time": "07:15:30",
-      "gps_lat": 21.0285,
-      "gps_lng": 105.8542,
-      "distance_m": 45,
-      "selfie_url": "",
-      "result_status": "success",
-      "reject_reason": ""
-    }
-  ]
-}
+```
+POST /api/services/app/BusAtt/SaveSystemConfig
 ```
 
----
+**Permission:** `BusAtt.SystemConfig.Edit`
 
-### GET `/reports/export-csv?report_date=2026-04-23`
-Xuất CSV chấm công (UTF-8 BOM, hỗ trợ tiếng Việt trong Excel).
-
-**Auth**: Admin
-
-**Response**: File CSV download (`chamcong_2026-04-23.csv`)
-
-Columns: STT, Ngày, Giờ chấm công, Họ tên, Email, Phòng ban, Mã xe, Tuyến, Khoảng cách (m), Kết quả, Lý do từ chối
+**Request Body:** (cùng format với response ở trên)
 
 ---
 
-### GET `/meals/admin/summary?meal_date=2026-04-24`
-Tổng hợp suất ăn theo ngày.
+## Ghi chú chung
 
-**Auth**: Admin
+### Format lỗi
 
-**Query params**: `meal_date` (optional, YYYY-MM-DD, mặc định ngày mai)
-
-**Response** `200`:
+Tất cả lỗi trả về dạng ABP standard:
 ```json
 {
-  "meal_date": "2026-04-24",
-  "total": 15,
-  "registrations": [
-    {
-      "registration_id": 8,
-      "user_id": 5,
-      "full_name": "Nguyễn Văn A",
-      "email": "nva@gmail.com",
-      "department": "Phòng Kỹ thuật",
-      "registered_at": "2026-04-23T10:30:00+07:00"
-    }
-  ]
-}
-```
-
----
-
-### GET `/meals/admin/history?meal_date=2026-04-24&status=registered`
-Lịch sử đăng ký suất ăn (admin view) với bộ lọc.
-
-**Auth**: Admin
-
-**Query params**:
-- `meal_date` (optional, YYYY-MM-DD)
-- `status` (optional: registered/cancelled)
-
-**Response** `200`:
-```json
-[
-  {
-    "registration_id": 8,
-    "user_id": 5,
-    "full_name": "Nguyễn Văn A",
-    "email": "nva@gmail.com",
-    "department": "Phòng Kỹ thuật",
-    "meal_date": "2026-04-24",
-    "status": "registered",
-    "created_at": "2026-04-23T10:30:00+07:00"
+  "error": {
+    "code": 0,
+    "message": "Mô tả lỗi bằng tiếng Việt",
+    "details": null
   }
-]
-```
-*Giới hạn 200 bản ghi, sắp xếp theo meal_date giảm dần.*
-
----
-
-## 12. Admin — Cấu hình hệ thống
-
-### GET `/config`
-Lấy cấu hình hiện tại.
-
-**Auth**: Admin
-
-**Response** `200`:
-```json
-{
-  "near_stop_threshold_meter": 150,
-  "require_gps": true,
-  "require_selfie": true
 }
 ```
 
----
+### Phân trang
 
-### PUT `/config`
-Cập nhật cấu hình.
+Tất cả API danh sách hỗ trợ phân trang ABP:
+- `SkipCount` (default: 0) — số bản ghi bỏ qua
+- `MaxResultCount` (default: 10) — số bản ghi tối đa
+- `Sorting` — chuỗi sắp xếp (VD: `"Name ASC"`, `"CreatedAt DESC"`)
 
-**Auth**: Admin
+### Multi-tenancy
 
-**Request Body**:
-```json
-{
-  "near_stop_threshold_meter": 200,
-  "require_gps": true,
-  "require_selfie": false
-}
-```
-*Tất cả fields optional. `near_stop_threshold_meter` phải từ 10 đến 5000.*
-
-**Response** `200`:
-```json
-{
-  "message": "Đã cập nhật cấu hình",
-  "near_stop_threshold_meter": 200,
-  "require_gps": true,
-  "require_selfie": false
-}
-```
-
----
-
-## Timezone
-
-- Server sử dụng **UTC+7** (Việt Nam) cho tất cả logic thời gian
-- Dates format: `YYYY-MM-DD`
-- Datetime format: ISO 8601
-
-## File Storage
-
-- Selfie: `uploads/attendance-selfie/YYYY-MM-DD/`
-- QR: `uploads/qr/YYYY-MM-DD/`
-- Max selfie: 5MB
-- Allowed image types: JPG, PNG, WEBP (validated by magic bytes)
+Tất cả dữ liệu được cách ly theo `TenantId`. Tenant được xác định qua subdomain hoặc cookie `abp.tenantid`.
