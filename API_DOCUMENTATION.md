@@ -3,7 +3,7 @@
 > Tài liệu API dành cho team Mobile  
 > Base URL: `https://{domain}/api/services/app/`  
 > Framework: ASP.NET Boilerplate (ABP)  
-> Tất cả endpoint sử dụng method **POST**
+> HTTP method được xác định theo tên method (xem mục 7.1)
 
 ---
 
@@ -15,6 +15,7 @@
 4. [Enum Values](#4-enum-values)
 5. [Module BusAtt - Chấm công xe bus](#5-module-busatt---chấm-công-xe-bus)
 6. [Module MeetingBooking - Đặt lịch họp](#6-module-meetingbooking---đặt-lịch-họp)
+7. [Ghi chú cho Mobile Team](#7-ghi-chú-cho-mobile-team)
 
 ---
 
@@ -58,7 +59,7 @@ POST /api/TokenAuth/Authenticate
 | Header          | Giá trị                | Mô tả                                 |
 | -----------------| ------------------------| ---------------------------------------|
 | `Authorization` | `Bearer {accessToken}` | Token lấy từ API Authenticate         |
-| `Content-Type`  | `application/json`     | Định dạng request body                |
+| `Content-Type`  | `application/json`     | Định dạng request body (cho POST/PUT) |
 | `Abp.TenantId`  | `{tenantId}` (int)     | ID tenant (bắt buộc cho multi-tenant) |
 
 ---
@@ -115,13 +116,13 @@ Khi có lỗi, API trả về format ABP chuẩn:
 #### 5.1.1 Lấy dữ liệu Dashboard Admin
 
 ```
-POST /api/services/app/DashboardData/GetAdminDashboardData
+GET /api/services/app/DashboardData/GetAdminDashboardData
 ```
 
 **Permission:** `Pages.Dashboard.Admin`  
 **Mô tả:** Lấy thống kê tổng quan cho admin (xe bus, tài xế, chấm công hôm nay, suất ăn).
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -167,13 +168,13 @@ POST /api/services/app/DashboardData/GetAdminDashboardData
 #### 5.1.2 Lấy dữ liệu Dashboard User
 
 ```
-POST /api/services/app/DashboardData/GetUserDashboardData
+GET /api/services/app/DashboardData/GetUserDashboardData
 ```
 
 **Permission:** `Pages.Dashboard.User`  
 **Mô tả:** Lấy thông tin dashboard cho nhân viên (đăng ký xe sắp tới, suất ăn, thống kê chấm công).
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -303,22 +304,21 @@ POST /api/services/app/BusAttAttendance/SubmitAttendance
 #### 5.2.4 Lấy tất cả log chấm công (Admin)
 
 ```
-POST /api/services/app/BusAttAttendance/GetAllAttendanceLogs
+GET /api/services/app/BusAttAttendance/GetAllAttendanceLogs?filter=string&attendanceDate=2024-01-15T00:00:00&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** `BusAtt.Attendance`  
 **Mô tả:** Lấy danh sách log chấm công của tất cả nhân viên (phân trang). Dành cho admin.
 
-**Request Body:**
-```json
-{
-  "filter": "string (tìm kiếm theo tên)",
-  "attendanceDate": "2024-01-15T00:00:00 (optional)",
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `filter` | string | Tìm kiếm theo tên |
+| `attendanceDate` | datetime (optional) | Lọc theo ngày, ví dụ `2024-01-15T00:00:00` |
+| `maxResultCount` | int | Số item/trang (mặc định 10) |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp, ví dụ `"creationTime DESC"` |
 
 **Response Body:**
 ```json
@@ -356,13 +356,13 @@ POST /api/services/app/BusAttAttendance/GetAllAttendanceLogs
 #### 5.2.5 Lấy log chấm công của tôi
 
 ```
-POST /api/services/app/BusAttAttendance/GetMyAttendanceLogs
+GET /api/services/app/BusAttAttendance/GetMyAttendanceLogs?filter=string&attendanceDate=2024-01-15T00:00:00&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** `Pages.Dashboard.User`  
 **Mô tả:** Lấy danh sách log chấm công của user hiện tại (phân trang).
 
-**Request Body:** Giống `GetAllAttendanceLogs`
+**Query Parameters:** Giống `GetAllAttendanceLogs`
 
 **Response Body:** Giống `GetAllAttendanceLogs`
 
@@ -371,13 +371,13 @@ POST /api/services/app/BusAttAttendance/GetMyAttendanceLogs
 #### 5.2.6 Lấy danh sách xe đang hoạt động để checkin
 
 ```
-POST /api/services/app/BusAttAttendance/GetActiveBusesForCheckin
+GET /api/services/app/BusAttAttendance/GetActiveBusesForCheckin
 ```
 
 **Permission:** `BusAtt` (class-level)  
 **Mô tả:** Lấy danh sách xe bus đang hoạt động mà user có thể checkin. Bao gồm trạng thái đã checkin hôm nay chưa.
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -405,21 +405,20 @@ POST /api/services/app/BusAttAttendance/GetActiveBusesForCheckin
 #### 5.3.1 Lấy danh sách xe bus
 
 ```
-POST /api/services/app/BusAttBus/GetAllBuses
+GET /api/services/app/BusAttBus/GetAllBuses?filter=string&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** `BusAtt.Bus`  
 **Mô tả:** Lấy danh sách xe bus (phân trang, tìm kiếm).
 
-**Request Body:**
-```json
-{
-  "filter": "string (tìm theo mã xe, tên, biển số)",
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `filter` | string | Tìm theo mã xe, tên, biển số |
+| `maxResultCount` | int | Số item/trang (mặc định 10) |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp |
 
 **Response Body:**
 ```json
@@ -458,18 +457,17 @@ POST /api/services/app/BusAttBus/GetAllBuses
 #### 5.3.2 Lấy thông tin xe để chỉnh sửa
 
 ```
-POST /api/services/app/BusAttBus/GetBusForEdit
+GET /api/services/app/BusAttBus/GetBusForEdit?id=0
 ```
 
 **Permission:** `BusAtt.Bus.Edit`  
 **Mô tả:** Lấy thông tin chi tiết xe bus để hiển thị form chỉnh sửa.
 
-**Request Body:**
-```json
-{
-  "id": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `id` | int | ID xe bus |
 
 **Response Body:**
 ```json
@@ -527,18 +525,17 @@ POST /api/services/app/BusAttBus/CreateOrEditBus
 #### 5.3.4 Xóa xe bus
 
 ```
-POST /api/services/app/BusAttBus/DeleteBus
+DELETE /api/services/app/BusAttBus/DeleteBus?id=0
 ```
 
 **Permission:** `BusAtt.Bus.Delete`  
 **Mô tả:** Xóa xe bus theo ID.
 
-**Request Body:**
-```json
-{
-  "id": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `id` | int | ID xe bus cần xóa |
 
 **Response Body:**
 ```json
@@ -550,18 +547,17 @@ POST /api/services/app/BusAttBus/DeleteBus
 #### 5.3.5 Lấy dropdown tài xế
 
 ```
-POST /api/services/app/BusAttBus/GetAllEmployeeForDriverDropDown
+GET /api/services/app/BusAttBus/GetAllEmployeeForDriverDropDown?current=0
 ```
 
 **Permission:** `BusAtt` (class-level)  
 **Mô tả:** Lấy danh sách nhân viên để chọn làm tài xế (dropdown).
 
-**Request Body:**
-```json
-{
-  "current": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `current` | int | ID nhân viên hiện tại (để đánh dấu selected) |
 
 **Response Body:**
 ```json
@@ -628,18 +624,17 @@ POST /api/services/app/BusAttBus/ReissueQRCode
 #### 5.3.8 Lấy QR đang active
 
 ```
-POST /api/services/app/BusAttBus/GetActiveQRCode
+GET /api/services/app/BusAttBus/GetActiveQRCode?busId=0
 ```
 
 **Permission:** `BusAtt` (class-level)  
 **Mô tả:** Lấy thông tin mã QR đang hoạt động của xe bus.
 
-**Request Body:**
-```json
-{
-  "busId": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `busId` | int | ID xe bus |
 
 **Response Body:**
 ```json
@@ -663,18 +658,17 @@ POST /api/services/app/BusAttBus/GetActiveQRCode
 #### 5.3.9 Lấy lịch sử QR
 
 ```
-POST /api/services/app/BusAttBus/GetQRCodeHistory
+GET /api/services/app/BusAttBus/GetQRCodeHistory?busId=0
 ```
 
 **Permission:** `BusAtt` (class-level)  
 **Mô tả:** Lấy lịch sử tất cả mã QR đã tạo cho xe bus.
 
-**Request Body:**
-```json
-{
-  "busId": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `busId` | int | ID xe bus |
 
 **Response Body:**
 ```json
@@ -702,21 +696,20 @@ POST /api/services/app/BusAttBus/GetQRCodeHistory
 #### 5.4.1 Lấy danh sách điểm đón/trả
 
 ```
-POST /api/services/app/BusAttLocation/GetAllLocations
+GET /api/services/app/BusAttLocation/GetAllLocations?filter=string&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** `BusAtt.Location`  
 **Mô tả:** Lấy danh sách tất cả điểm đón/trả (phân trang).
 
-**Request Body:**
-```json
-{
-  "filter": "string (tìm theo tên)",
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `filter` | string | Tìm theo tên |
+| `maxResultCount` | int | Số item/trang (mặc định 10) |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp |
 
 **Response Body:**
 ```json
@@ -744,18 +737,17 @@ POST /api/services/app/BusAttLocation/GetAllLocations
 #### 5.4.2 Lấy thông tin điểm để chỉnh sửa
 
 ```
-POST /api/services/app/BusAttLocation/GetLocationForEdit
+GET /api/services/app/BusAttLocation/GetLocationForEdit?id=0
 ```
 
 **Permission:** `BusAtt.Location.Edit`  
 **Mô tả:** Lấy thông tin chi tiết điểm đón/trả để chỉnh sửa.
 
-**Request Body:**
-```json
-{
-  "id": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `id` | int | ID điểm đón/trả |
 
 **Response Body:**
 ```json
@@ -805,18 +797,17 @@ POST /api/services/app/BusAttLocation/CreateOrEditLocation
 #### 5.4.4 Xóa điểm đón/trả
 
 ```
-POST /api/services/app/BusAttLocation/DeleteLocation
+DELETE /api/services/app/BusAttLocation/DeleteLocation?id=0
 ```
 
 **Permission:** `BusAtt.Location.Delete`  
 **Mô tả:** Xóa điểm đón/trả theo ID.
 
-**Request Body:**
-```json
-{
-  "id": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `id` | int | ID điểm đón/trả cần xóa |
 
 **Response Body:**
 ```json
@@ -828,18 +819,17 @@ POST /api/services/app/BusAttLocation/DeleteLocation
 #### 5.4.5 Lấy dropdown điểm đón/trả
 
 ```
-POST /api/services/app/BusAttLocation/GetAllLocationDropDown
+GET /api/services/app/BusAttLocation/GetAllLocationDropDown?current=0
 ```
 
 **Permission:** `BusAtt` (class-level)  
 **Mô tả:** Lấy danh sách điểm đón/trả dạng dropdown.
 
-**Request Body:**
-```json
-{
-  "current": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `current` | int | ID điểm hiện tại (để đánh dấu selected) |
 
 **Response Body:**
 ```json
@@ -858,13 +848,13 @@ POST /api/services/app/BusAttLocation/GetAllLocationDropDown
 #### 5.5.1 Lấy tất cả khung giờ
 
 ```
-POST /api/services/app/BusAttTimeSlot/GetAll
+GET /api/services/app/BusAttTimeSlot/GetAll
 ```
 
 **Permission:** `BusAtt.Bus`  
 **Mô tả:** Lấy danh sách tất cả khung giờ xe bus (bao gồm cả inactive).
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -922,18 +912,17 @@ POST /api/services/app/BusAttTimeSlot/CreateOrEdit
 #### 5.5.3 Xóa khung giờ
 
 ```
-POST /api/services/app/BusAttTimeSlot/Delete
+DELETE /api/services/app/BusAttTimeSlot/Delete?id=0
 ```
 
 **Permission:** `BusAtt.Bus.Create`  
 **Mô tả:** Xóa khung giờ xe bus theo ID.
 
-**Request Body:**
-```json
-{
-  "id": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `id` | int | ID khung giờ cần xóa |
 
 **Response Body:**
 ```json
@@ -945,13 +934,13 @@ POST /api/services/app/BusAttTimeSlot/Delete
 #### 5.5.4 Lấy khung giờ đang hoạt động (dropdown)
 
 ```
-POST /api/services/app/BusAttTimeSlot/GetActiveTimeSlots
+GET /api/services/app/BusAttTimeSlot/GetActiveTimeSlots
 ```
 
 **Permission:** `BusAtt.Bus`  
 **Mô tả:** Lấy danh sách khung giờ đang active để hiển thị dropdown cho user đăng ký.
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -977,13 +966,13 @@ POST /api/services/app/BusAttTimeSlot/GetActiveTimeSlots
 #### 5.6.1 Lấy tất cả buổi ăn
 
 ```
-POST /api/services/app/BusAttMealTimeSlot/GetAll
+GET /api/services/app/BusAttMealTimeSlot/GetAll
 ```
 
 **Permission:** `Meal.MealTimeSlot`  
 **Mô tả:** Lấy danh sách tất cả buổi ăn (bao gồm cả inactive).
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -1041,18 +1030,17 @@ POST /api/services/app/BusAttMealTimeSlot/CreateOrEdit
 #### 5.6.3 Xóa buổi ăn
 
 ```
-POST /api/services/app/BusAttMealTimeSlot/Delete
+DELETE /api/services/app/BusAttMealTimeSlot/Delete?id=0
 ```
 
 **Permission:** `Meal.MealTimeSlot.Delete`  
 **Mô tả:** Xóa buổi ăn theo ID.
 
-**Request Body:**
-```json
-{
-  "id": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `id` | int | ID buổi ăn cần xóa |
 
 **Response Body:**
 ```json
@@ -1064,13 +1052,13 @@ POST /api/services/app/BusAttMealTimeSlot/Delete
 #### 5.6.4 Lấy buổi ăn đang hoạt động (dropdown)
 
 ```
-POST /api/services/app/BusAttMealTimeSlot/GetActiveMealTimeSlots
+GET /api/services/app/BusAttMealTimeSlot/GetActiveMealTimeSlots
 ```
 
 **Permission:** `Meal.MealTimeSlot`  
 **Mô tả:** Lấy danh sách buổi ăn đang active để hiển thị dropdown cho user đăng ký.
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -1094,13 +1082,13 @@ POST /api/services/app/BusAttMealTimeSlot/GetActiveMealTimeSlots
 #### 5.6.5 Lấy ngày nghỉ suất ăn
 
 ```
-POST /api/services/app/BusAttMealTimeSlot/GetMealExcludedDays
+GET /api/services/app/BusAttMealTimeSlot/GetMealExcludedDays
 ```
 
 **Permission:** `Meal.MealTimeSlot`  
 **Mô tả:** Lấy chuỗi ngày trong tuần không phục vụ suất ăn (dạng "0,6" - 0=CN, 6=T7).
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -1206,23 +1194,22 @@ POST /api/services/app/BusAttBooking/BatchBookingRequest
 #### 5.7.3 Lấy yêu cầu đặt xe của tôi
 
 ```
-POST /api/services/app/BusAttBooking/GetMyBookingRequests
+GET /api/services/app/BusAttBooking/GetMyBookingRequests?statusFilter=0&fromDate=2024-01-01T00:00:00&toDate=2024-01-31T00:00:00&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** `BusAtt.Booking`  
 **Mô tả:** Lấy danh sách yêu cầu đặt xe của user hiện tại (phân trang).
 
-**Request Body:**
-```json
-{
-  "statusFilter": 0,
-  "fromDate": "2024-01-01T00:00:00",
-  "toDate": "2024-01-31T00:00:00",
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `statusFilter` | int (optional) | Lọc theo trạng thái (0=Pending, 1=Approved, 2=Rejected, 3=Cancelled) |
+| `fromDate` | datetime (optional) | Từ ngày |
+| `toDate` | datetime (optional) | Đến ngày |
+| `maxResultCount` | int | Số item/trang |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp |
 
 **Response Body:**
 ```json
@@ -1255,13 +1242,13 @@ POST /api/services/app/BusAttBooking/GetMyBookingRequests
 #### 5.7.4 Lấy tất cả yêu cầu đặt xe (Admin)
 
 ```
-POST /api/services/app/BusAttBooking/GetAllBookingRequests
+GET /api/services/app/BusAttBooking/GetAllBookingRequests?statusFilter=0&fromDate=2024-01-01T00:00:00&toDate=2024-01-31T00:00:00&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** `BusAtt.Booking.Process`  
 **Mô tả:** Lấy tất cả yêu cầu đặt xe của mọi nhân viên (phân trang). Dành cho admin xử lý.
 
-**Request Body:** Giống `GetMyBookingRequests`
+**Query Parameters:** Giống `GetMyBookingRequests`
 
 **Response Body:** Giống `GetMyBookingRequests`
 
@@ -1341,13 +1328,13 @@ POST /api/services/app/BusAttBooking/CancelBookingRequest
 #### 5.7.8 Lấy dropdown xe bus cho đặt xe
 
 ```
-POST /api/services/app/BusAttBooking/GetAllBusDropDownForBooking
+GET /api/services/app/BusAttBooking/GetAllBusDropDownForBooking
 ```
 
 **Permission:** `BusAtt.Booking.Process`  
 **Mô tả:** Lấy danh sách xe bus dạng dropdown để admin chọn khi duyệt yêu cầu.
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -1395,23 +1382,22 @@ POST /api/services/app/BusAttUrgentRequest/CreateUrgentRequest
 #### 5.8.2 Lấy tất cả yêu cầu xe đột xuất
 
 ```
-POST /api/services/app/BusAttUrgentRequest/GetAllUrgentRequests
+GET /api/services/app/BusAttUrgentRequest/GetAllUrgentRequests?statusFilter=0&fromDate=2024-01-01T00:00:00&toDate=2024-01-31T00:00:00&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** `BusAtt.UrgentRequest`  
 **Mô tả:** Lấy danh sách yêu cầu xe đột xuất (phân trang, lọc theo trạng thái/ngày).
 
-**Request Body:**
-```json
-{
-  "statusFilter": 0,
-  "fromDate": "2024-01-01T00:00:00",
-  "toDate": "2024-01-31T00:00:00",
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `statusFilter` | int (optional) | Lọc theo trạng thái (0=Pending, 1=Approved, 2=Rejected) |
+| `fromDate` | datetime (optional) | Từ ngày |
+| `toDate` | datetime (optional) | Đến ngày |
+| `maxResultCount` | int | Số item/trang |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp |
 
 **Response Body:**
 ```json
@@ -1448,18 +1434,17 @@ POST /api/services/app/BusAttUrgentRequest/GetAllUrgentRequests
 #### 5.8.3 Lấy chi tiết yêu cầu xe đột xuất
 
 ```
-POST /api/services/app/BusAttUrgentRequest/GetUrgentRequestForEdit
+GET /api/services/app/BusAttUrgentRequest/GetUrgentRequestForEdit?id=0
 ```
 
 **Permission:** `BusAtt.UrgentRequest`  
 **Mô tả:** Lấy chi tiết một yêu cầu xe đột xuất theo ID.
 
-**Request Body:**
-```json
-{
-  "id": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `id` | int | ID yêu cầu |
 
 **Response Body:**
 ```json
@@ -1541,13 +1526,13 @@ POST /api/services/app/BusAttUrgentRequest/RejectUrgentRequest
 #### 5.8.6 Lấy dropdown xe bus cho yêu cầu đột xuất
 
 ```
-POST /api/services/app/BusAttUrgentRequest/GetAllBusDropDownForUrgent
+GET /api/services/app/BusAttUrgentRequest/GetAllBusDropDownForUrgent
 ```
 
 **Permission:** `BusAtt.UrgentRequest`  
 **Mô tả:** Lấy danh sách xe bus dạng dropdown để admin chọn khi duyệt.
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -1564,13 +1549,13 @@ POST /api/services/app/BusAttUrgentRequest/GetAllBusDropDownForUrgent
 #### 5.8.7 Lấy dropdown tài xế cho yêu cầu đột xuất
 
 ```
-POST /api/services/app/BusAttUrgentRequest/GetAllDriverDropDownForUrgent
+GET /api/services/app/BusAttUrgentRequest/GetAllDriverDropDownForUrgent
 ```
 
 **Permission:** `BusAtt.UrgentRequest`  
 **Mô tả:** Lấy danh sách tài xế dạng dropdown để admin chọn khi duyệt.
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -1589,13 +1574,13 @@ POST /api/services/app/BusAttUrgentRequest/GetAllDriverDropDownForUrgent
 #### 5.9.1 Lấy cấu hình hệ thống
 
 ```
-POST /api/services/app/BusAttSystemConfig/GetSystemConfig
+GET /api/services/app/BusAttSystemConfig/GetSystemConfig
 ```
 
 **Permission:** `BusAtt.SystemConfig`  
 **Mô tả:** Lấy cấu hình hệ thống chấm công (ngưỡng GPS, yêu cầu selfie, ngày nghỉ).
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -1650,22 +1635,21 @@ POST /api/services/app/BusAttSystemConfig/SaveSystemConfig
 #### 6.1.1 Lấy danh sách phòng họp
 
 ```
-POST /api/services/app/MeetingBookingRoom/GetAll
+GET /api/services/app/MeetingBookingRoom/GetAll?filter=string&status=1&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** Authenticated (class-level `[AbpAuthorize]`)  
 **Mô tả:** Lấy danh sách phòng họp (phân trang, lọc theo tên/trạng thái).
 
-**Request Body:**
-```json
-{
-  "filter": "string (tìm theo tên/mã phòng)",
-  "status": 1,
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `filter` | string | Tìm theo tên/mã phòng |
+| `status` | int (optional) | Lọc theo trạng thái (1=Active, 2=Suspended) |
+| `maxResultCount` | int | Số item/trang |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp |
 
 **Response Body:**
 ```json
@@ -1699,13 +1683,13 @@ POST /api/services/app/MeetingBookingRoom/GetAll
 #### 6.1.2 Lấy dropdown phòng họp đang hoạt động
 
 ```
-POST /api/services/app/MeetingBookingRoom/GetActiveRoomsDropDown
+GET /api/services/app/MeetingBookingRoom/GetActiveRoomsDropDown
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Lấy danh sách phòng họp đang active dạng dropdown.
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -1755,18 +1739,17 @@ POST /api/services/app/MeetingBookingRoom/CreateOrUpdate
 #### 6.1.4 Xóa phòng họp
 
 ```
-POST /api/services/app/MeetingBookingRoom/Delete
+DELETE /api/services/app/MeetingBookingRoom/Delete?id=0
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Xóa phòng họp theo ID (soft delete).
 
-**Request Body:**
-```json
-{
-  "id": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `id` | int | ID phòng họp cần xóa |
 
 **Response Body:**
 ```json
@@ -1780,21 +1763,20 @@ POST /api/services/app/MeetingBookingRoom/Delete
 #### 6.2.1 Lấy lịch tuần
 
 ```
-POST /api/services/app/MeetingBookingCalendar/GetWeeklyCalendar
+GET /api/services/app/MeetingBookingCalendar/GetWeeklyCalendar?weekStartDate=2024-01-15T00:00:00&roomId=0&department=string&statusFilter=2
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Lấy dữ liệu lịch đặt phòng họp theo tuần. Hiển thị các booking trên calendar view.
 
-**Request Body:**
-```json
-{
-  "weekStartDate": "2024-01-15T00:00:00 (optional, mặc định tuần hiện tại)",
-  "roomId": 0,
-  "department": "string (optional)",
-  "statusFilter": 2
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `weekStartDate` | datetime (optional) | Ngày bắt đầu tuần, mặc định tuần hiện tại |
+| `roomId` | int (optional) | Lọc theo phòng |
+| `department` | string (optional) | Lọc theo phòng ban |
+| `statusFilter` | int (optional) | Lọc theo trạng thái |
 
 **Response Body:**
 ```json
@@ -1885,7 +1867,7 @@ POST /api/services/app/MeetingBookingRequest/Create
 #### 6.3.2 Cập nhật yêu cầu đặt lịch họp
 
 ```
-POST /api/services/app/MeetingBookingRequest/Update
+PUT /api/services/app/MeetingBookingRequest/Update
 ```
 
 **Permission:** Authenticated  
@@ -2014,25 +1996,24 @@ POST /api/services/app/MeetingBookingRequest/Cancel
 #### 6.3.7 Lấy tất cả yêu cầu đặt lịch
 
 ```
-POST /api/services/app/MeetingBookingRequest/GetAll
+GET /api/services/app/MeetingBookingRequest/GetAll?status=1&roomId=0&dateFrom=2024-01-01T00:00:00&dateTo=2024-01-31T00:00:00&keyword=string&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Lấy danh sách tất cả yêu cầu đặt lịch họp (phân trang, lọc).
 
-**Request Body:**
-```json
-{
-  "status": 1,
-  "roomId": 0,
-  "dateFrom": "2024-01-01T00:00:00",
-  "dateTo": "2024-01-31T00:00:00",
-  "keyword": "string (tìm theo chủ đề, người chủ trì)",
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `status` | int (optional) | Lọc theo trạng thái |
+| `roomId` | int (optional) | Lọc theo phòng |
+| `dateFrom` | datetime (optional) | Từ ngày |
+| `dateTo` | datetime (optional) | Đến ngày |
+| `keyword` | string (optional) | Tìm theo chủ đề, người chủ trì |
+| `maxResultCount` | int | Số item/trang |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp |
 
 **Response Body:**
 ```json
@@ -2076,13 +2057,13 @@ POST /api/services/app/MeetingBookingRequest/GetAll
 #### 6.3.8 Lấy yêu cầu đặt lịch của tôi
 
 ```
-POST /api/services/app/MeetingBookingRequest/GetMyRequests
+GET /api/services/app/MeetingBookingRequest/GetMyRequests?status=1&roomId=0&dateFrom=2024-01-01T00:00:00&dateTo=2024-01-31T00:00:00&keyword=string&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Lấy danh sách yêu cầu đặt lịch của user hiện tại (phân trang).
 
-**Request Body:** Giống `GetAll`
+**Query Parameters:** Giống `GetAll`
 
 **Response Body:** Giống `GetAll`
 
@@ -2138,25 +2119,24 @@ POST /api/services/app/MeetingBookingRequest/ConfirmPreparation
 #### 6.3.11 Lấy danh sách phân công phục vụ của tôi
 
 ```
-POST /api/services/app/MeetingBookingRequest/GetMyServiceAssignments
+GET /api/services/app/MeetingBookingRequest/GetMyServiceAssignments?status=3&roomId=0&dateFrom=2024-01-01T00:00:00&dateTo=2024-01-31T00:00:00&keyword=string&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Lấy danh sách buổi họp mà user hiện tại được phân công phục vụ.
 
-**Request Body:**
-```json
-{
-  "status": 3,
-  "roomId": 0,
-  "dateFrom": "2024-01-01T00:00:00",
-  "dateTo": "2024-01-31T00:00:00",
-  "keyword": "string",
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `status` | int (optional) | Lọc theo trạng thái |
+| `roomId` | int (optional) | Lọc theo phòng |
+| `dateFrom` | datetime (optional) | Từ ngày |
+| `dateTo` | datetime (optional) | Đến ngày |
+| `keyword` | string (optional) | Tìm kiếm |
+| `maxResultCount` | int | Số item/trang |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp |
 
 **Response Body:**
 ```json
@@ -2197,25 +2177,24 @@ POST /api/services/app/MeetingBookingRequest/GetMyServiceAssignments
 #### 6.3.12 Lấy tổng quan phân công phục vụ (Admin)
 
 ```
-POST /api/services/app/MeetingBookingRequest/GetAllServiceAssignments
+GET /api/services/app/MeetingBookingRequest/GetAllServiceAssignments?status=3&roomId=0&dateFrom=2024-01-01T00:00:00&dateTo=2024-01-31T00:00:00&keyword=string&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** `Dms.MeetingBooking.ViewAllStaff`  
 **Mô tả:** Lấy tổng quan tất cả phân công phục vụ (dành cho người có quyền quản lý nhân viên phục vụ).
 
-**Request Body:**
-```json
-{
-  "status": 3,
-  "roomId": 0,
-  "dateFrom": "2024-01-01T00:00:00",
-  "dateTo": "2024-01-31T00:00:00",
-  "keyword": "string",
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `status` | int (optional) | Lọc theo trạng thái |
+| `roomId` | int (optional) | Lọc theo phòng |
+| `dateFrom` | datetime (optional) | Từ ngày |
+| `dateTo` | datetime (optional) | Đến ngày |
+| `keyword` | string (optional) | Tìm kiếm |
+| `maxResultCount` | int | Số item/trang |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp |
 
 **Response Body:**
 ```json
@@ -2253,13 +2232,13 @@ POST /api/services/app/MeetingBookingRequest/GetAllServiceAssignments
 #### 6.3.13 Lấy dropdown nhân viên phục vụ
 
 ```
-POST /api/services/app/MeetingBookingRequest/GetServiceStaffDropDown
+GET /api/services/app/MeetingBookingRequest/GetServiceStaffDropDown
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Lấy danh sách nhân viên phục vụ dạng dropdown.
 
-**Request Body:** Không có
+**Query Parameters:** Không có
 
 **Response Body:**
 ```json
@@ -2276,20 +2255,19 @@ POST /api/services/app/MeetingBookingRequest/GetServiceStaffDropDown
 #### 6.3.14 Lấy dropdown nhân viên phục vụ (phân trang)
 
 ```
-POST /api/services/app/MeetingBookingRequest/GetServiceStaffDropDownPaged
+GET /api/services/app/MeetingBookingRequest/GetServiceStaffDropDownPaged?filter=string&skipCount=0&maxResultCount=20
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Lấy danh sách nhân viên phục vụ có phân trang và tìm kiếm (dùng cho infinite scroll).
 
-**Request Body:**
-```json
-{
-  "filter": "string (tìm theo tên)",
-  "skipCount": 0,
-  "maxResultCount": 20
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `filter` | string | Tìm theo tên |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `maxResultCount` | int | Số item/trang (mặc định 20) |
 
 **Response Body:**
 ```json
@@ -2309,18 +2287,17 @@ POST /api/services/app/MeetingBookingRequest/GetServiceStaffDropDownPaged
 #### 6.3.15 Lấy lịch sử booking
 
 ```
-POST /api/services/app/MeetingBookingRequest/GetBookingHistory
+GET /api/services/app/MeetingBookingRequest/GetBookingHistory?requestId=0
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Lấy lịch sử thay đổi của một yêu cầu đặt lịch cụ thể.
 
-**Request Body:**
-```json
-{
-  "requestId": 0
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `requestId` | int | ID yêu cầu đặt lịch |
 
 **Response Body:**
 ```json
@@ -2346,25 +2323,24 @@ POST /api/services/app/MeetingBookingRequest/GetBookingHistory
 #### 6.3.16 Lấy tất cả lịch sử (Admin)
 
 ```
-POST /api/services/app/MeetingBookingRequest/GetAllHistory
+GET /api/services/app/MeetingBookingRequest/GetAllHistory?actionType=1&dateFrom=2024-01-01T00:00:00&dateTo=2024-01-31T00:00:00&userName=string&keyword=string&maxResultCount=10&skipCount=0&sorting=string
 ```
 
 **Permission:** Authenticated  
 **Mô tả:** Lấy toàn bộ lịch sử thay đổi của tất cả booking (phân trang, lọc).
 
-**Request Body:**
-```json
-{
-  "actionType": 1,
-  "dateFrom": "2024-01-01T00:00:00",
-  "dateTo": "2024-01-31T00:00:00",
-  "userName": "string (lọc theo người thực hiện)",
-  "keyword": "string",
-  "maxResultCount": 10,
-  "skipCount": 0,
-  "sorting": "string (optional)"
-}
-```
+**Query Parameters:**
+
+| Parameter | Type | Mô tả |
+|-----------|------|-------|
+| `actionType` | int (optional) | Lọc theo loại hành động |
+| `dateFrom` | datetime (optional) | Từ ngày |
+| `dateTo` | datetime (optional) | Đến ngày |
+| `userName` | string (optional) | Lọc theo người thực hiện |
+| `keyword` | string (optional) | Tìm kiếm |
+| `maxResultCount` | int | Số item/trang |
+| `skipCount` | int | Bỏ qua bao nhiêu item |
+| `sorting` | string (optional) | Sắp xếp |
 
 **Response Body:**
 ```json
@@ -2392,9 +2368,21 @@ POST /api/services/app/MeetingBookingRequest/GetAllHistory
 
 ## 7. Ghi chú cho Mobile Team
 
-### 7.1 Quy tắc chung ABP Framework
+### 7.1 Quy tắc HTTP Method theo ABP Framework
 
-- **Tất cả API đều dùng method POST** (ABP convention cho Application Services).
+ABP Framework tự động xác định HTTP method dựa trên **tên method** của Application Service:
+
+| Prefix tên method | HTTP Method | Truyền tham số |
+|-------------------|-------------|----------------|
+| `Get...` | **GET** | Query string |
+| `Create...`, `Insert...` | **POST** | Request body (JSON) |
+| `Update...`, `Edit...` | **PUT** | Request body (JSON) |
+| `Delete...`, `Remove...` | **DELETE** | Query string |
+| Khác (`Submit`, `Approve`, `Reject`, `Cancel`, `Assign`, `Confirm`, `Save`, `Upload`, `Validate`, `Batch`, `Reissue`, `Generate`) | **POST** | Request body (JSON) |
+
+**Lưu ý quan trọng:**
+- Với **GET** và **DELETE**: tham số được truyền qua query string (không có request body).
+- Với **POST** và **PUT**: tham số được truyền qua request body dạng JSON.
 - **Response wrapper:** Mọi response đều được wrap trong `{ "result": ..., "success": true/false, "error": ... }`.
 - **Phân trang:** Các API có phân trang sử dụng `PagedResultDto` với `totalCount` và `items`.
 - **Input phân trang:** Gửi `maxResultCount` (số item/trang) và `skipCount` (bỏ qua bao nhiêu item).
@@ -2431,18 +2419,19 @@ Draft (0) → PendingApproval (1) → Approved (2) → ServiceAssigned (3) → P
 
 ### 7.5 Checkin Flow (Mobile)
 
-1. Gọi `GetActiveBusesForCheckin` → hiển thị danh sách xe
+1. Gọi `GET GetActiveBusesForCheckin` → hiển thị danh sách xe
 2. User chọn xe → dùng `qrToken` hoặc quét QR
-3. Gọi `ValidateQRToken` → nhận thông tin cấu hình (GPS, selfie)
-4. Nếu `requireSelfie = true` → chụp ảnh → gọi `UploadSelfie`
-5. Gọi `SubmitAttendance` với GPS + selfie URL → nhận kết quả
+3. Gọi `POST ValidateQRToken` → nhận thông tin cấu hình (GPS, selfie)
+4. Nếu `requireSelfie = true` → chụp ảnh → gọi `POST UploadSelfie`
+5. Gọi `POST SubmitAttendance` với GPS + selfie URL → nhận kết quả
 
 ### 7.6 Meeting Booking Flow (Mobile)
 
-1. Gọi `GetActiveRoomsDropDown` → chọn phòng
-2. Gọi `Create` với `saveAsDraft = false` → tạo và gửi luôn
-3. Admin gọi `Approve` → duyệt + phân công phục vụ
-4. Nhân viên phục vụ gọi `GetMyServiceAssignments` → xem danh sách
-5. Nhân viên phục vụ gọi `ConfirmPreparation` → xác nhận đã chuẩn bị
+1. Gọi `GET GetActiveRoomsDropDown` → chọn phòng
+2. Gọi `POST Create` với `saveAsDraft = false` → tạo và gửi luôn
+3. Admin gọi `POST Approve` → duyệt + phân công phục vụ
+4. Nhân viên phục vụ gọi `GET GetMyServiceAssignments` → xem danh sách
+5. Nhân viên phục vụ gọi `POST ConfirmPreparation` → xác nhận đã chuẩn bị
 
 ---
+
